@@ -100,6 +100,101 @@ class EnhancedPensionCalculator:
         tax_breakdown['effective_rate'] = (tax / taxable_income * 100) if taxable_income > 0 else 0
         
         return tax_breakdown
+
+    def calculate_sipp_tax_free_available(self, sipp_value: float, tax_free_taken: float = 0) -> Dict:
+    """Calculate available tax-free amount from SIPP"""
+    max_tax_free = sipp_value * 0.25
+    remaining_tax_free = max(0, max_tax_free - tax_free_taken)
+    taxable_portion = sipp_value - max_tax_free
+    
+    return {
+        'max_tax_free_lump_sum': max_tax_free,
+        'remaining_tax_free': remaining_tax_free,
+        'taxable_portion': taxable_portion,
+        'tax_free_percentage_used': (tax_free_taken / max_tax_free * 100) if max_tax_free > 0 else 0
+    }
+
+def optimize_withdrawal_order(self, target_net_income: float, available_sources: Dict, 
+                            additional_taxable_income: float, personal_allowance: float) -> Dict:
+    """
+    Optimize withdrawal order for tax efficiency:
+    1. SIPP Tax-free (25% allowance) - MOST EFFICIENT
+    2. ISA (tax-free) - SECOND MOST EFFICIENT  
+    3. SIPP Taxable (income tax applies) - LEAST EFFICIENT
+    """
+    withdrawal_plan = {
+        'sipp_tax_free': 0,
+        'isa_withdrawal': 0,
+        'sipp_taxable': 0,
+        'total_gross': 0,
+        'total_tax': 0,
+        'total_net': 0,
+        'optimization_notes': []
+    }
+    
+    remaining_need = target_net_income
+    
+    # Step 1: Use SIPP tax-free first (most efficient - 0% tax)
+    if remaining_need > 0 and available_sources.get('sipp_tax_free', 0) > 0:
+        sipp_tax_free_use = min(remaining_need, available_sources['sipp_tax_free'])
+        withdrawal_plan['sipp_tax_free'] = sipp_tax_free_use
+        remaining_need -= sipp_tax_free_use
+        withdrawal_plan['optimization_notes'].append(f"Used £{sipp_tax_free_use:,.0f} SIPP tax-free (0% tax)")
+    
+    # Step 2: Use ISA if still needed (also tax-free)
+    if remaining_need > 0 and available_sources.get('isa', 0) > 0:
+        isa_use = min(remaining_need, available_sources['isa'])
+        withdrawal_plan['isa_withdrawal'] = isa_use
+        remaining_need -= isa_use
+        withdrawal_plan['optimization_notes'].append(f"Used £{isa_use:,.0f} ISA (0% tax)")
+    
+    # Step 3: Use SIPP taxable if still needed (least efficient - 20%+ tax)
+    if remaining_need > 0 and available_sources.get('sipp_taxable', 0) > 0:
+        # Need to gross up for tax - iterative calculation for precision
+        estimated_gross_needed = remaining_need * 1.3  # Initial estimate
+        
+        for iteration in range(10):
+            sipp_taxable_use = min(estimated_gross_needed, available_sources['sipp_taxable'])
+            total_taxable_income = additional_taxable_income + sipp_taxable_use
+            
+            tax_calc = self.calculate_income_tax_with_thresholds(total_taxable_income, personal_allowance)
+            
+            # Tax attributable to the SIPP withdrawal
+            if additional_taxable_income > 0:
+                tax_without_sipp = self.calculate_income_tax_with_thresholds(additional_taxable_income, personal_allowance)
+                sipp_tax = tax_calc['total_tax'] - tax_without_sipp['total_tax']
+            else:
+                sipp_tax = tax_calc['total_tax']
+            
+            net_from_sipp = sipp_taxable_use - sipp_tax
+            
+            if abs(net_from_sipp - remaining_need) < 1:  # Within £1
+                break
+                
+            if net_from_sipp > 0:
+                adjustment = remaining_need / net_from_sipp
+                estimated_gross_needed *= adjustment
+            else:
+                estimated_gross_needed *= 1.1
+        
+        withdrawal_plan['sipp_taxable'] = sipp_taxable_use
+        withdrawal_plan['total_tax'] = sipp_tax
+        
+        effective_rate = (sipp_tax / sipp_taxable_use * 100) if sipp_taxable_use > 0 else 0
+        withdrawal_plan['optimization_notes'].append(
+            f"Used £{sipp_taxable_use:,.0f} SIPP taxable ({effective_rate:.1f}% tax)"
+        )
+    
+    # Calculate totals
+    withdrawal_plan['total_gross'] = (
+        withdrawal_plan['sipp_tax_free'] + 
+        withdrawal_plan['isa_withdrawal'] + 
+        withdrawal_plan['sipp_taxable']
+    )
+    withdrawal_plan['total_net'] = withdrawal_plan['total_gross'] - withdrawal_plan['total_tax']
+    
+    return withdrawal_plan
+
     
     def calculate_yield_to_maturity(self, price: float, face_value: float, 
                                   coupon_rate: float, years_to_maturity: float) -> float:
