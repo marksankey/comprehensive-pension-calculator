@@ -898,13 +898,223 @@ def get_current_gilt_yields():
         }
 
 def create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder, scenario_results=None):
-    """Create comprehensive Excel export with bond recommendations"""
+    """Create comprehensive Excel export with multiple detailed sheets"""
     try:
         output = BytesIO()
         
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Annual data
+            # Main annual analysis - comprehensive data
             df_annual = pd.DataFrame(annual_data)
+            df_annual.to_excel(writer, sheet_name='Annual Analysis', index=False)
+            
+            # Summary dashboard
+            if annual_data:
+                summary_metrics = {
+                    'Metric': [
+                        'Portfolio Summary',
+                        'Initial SIPP Value',
+                        'Initial ISA Value', 
+                        'Total Initial Portfolio',
+                        'Final Portfolio Value',
+                        'Portfolio Growth',
+                        '',
+                        'Income Analysis',
+                        'Target Annual Income',
+                        'Year 1 Net Income',
+                        'Average Annual Net Income',
+                        'Total Income Over Period',
+                        '',
+                        'Tax Analysis', 
+                        'Average Tax Rate',
+                        'Total Tax Paid',
+                        'Tax Efficiency Score',
+                        '',
+                        'Bond Income Analysis',
+                        'Average SIPP Bond Income',
+                        'Average ISA Bond Income',
+                        'Total Average Bond Income',
+                        'Bond Income vs Target',
+                        '',
+                        'Withdrawal Analysis',
+                        'Total SIPP Tax-Free Used',
+                        'Total ISA Withdrawals',
+                        'Total SIPP Taxable Used',
+                        '',
+                        'Sustainability Metrics',
+                        'Years with Income Shortfall',
+                        'Final Portfolio vs Initial',
+                        'Strategy Sustainable'
+                    ],
+                    'Value': [
+                        '',
+                        f"£{annual_data[0].get('remaining_sipp_tax_free', 0) + annual_data[0].get('remaining_sipp_taxable', 0):,.0f}",
+                        f"£{annual_data[0].get('remaining_isa', 0):,.0f}",
+                        f"£{annual_data[0].get('total_remaining_pots', 0):,.0f}",
+                        f"£{annual_data[-1]['total_remaining_pots']:,.0f}",
+                        f"{((annual_data[-1]['total_remaining_pots'] / annual_data[0]['total_remaining_pots']) - 1) * 100:+.1f}%",
+                        '',
+                        '',
+                        f"£{annual_data[0]['target_income']:,.0f}",
+                        f"£{annual_data[0]['total_net_income']:,.0f}",
+                        f"£{np.mean([y['total_net_income'] for y in annual_data]):,.0f}",
+                        f"£{sum([y['total_net_income'] for y in annual_data]):,.0f}",
+                        '',
+                        '',
+                        f"{np.mean([y['effective_tax_rate'] for y in annual_data]):.2f}%",
+                        f"£{sum([y['total_tax'] for y in annual_data]):,.0f}",
+                        f"{100 - np.mean([y['effective_tax_rate'] for y in annual_data]):.1f}%",
+                        '',
+                        '',
+                        f"£{np.mean([y['sipp_bond_income'] for y in annual_data]):,.0f}",
+                        f"£{np.mean([y['isa_bond_income'] for y in annual_data]):,.0f}",
+                        f"£{np.mean([y['sipp_bond_income'] + y['isa_bond_income'] for y in annual_data]):,.0f}",
+                        f"{(np.mean([y['sipp_bond_income'] + y['isa_bond_income'] for y in annual_data]) / annual_data[0]['target_income']) * 100:.1f}%",
+                        '',
+                        '',
+                        f"£{sum([y['sipp_tax_free_withdrawal'] for y in annual_data]):,.0f}",
+                        f"£{sum([y['isa_withdrawal'] for y in annual_data]):,.0f}",
+                        f"£{sum([y['sipp_taxable_withdrawal'] for y in annual_data]):,.0f}",
+                        '',
+                        '',
+                        f"{len([y for y in annual_data if y['income_vs_target'] < -500])}",
+                        f"{((annual_data[-1]['total_remaining_pots'] / annual_data[0]['total_remaining_pots']) - 1) * 100:+.1f}%",
+                        'Yes' if annual_data[-1]['total_remaining_pots'] > 50000 else 'No'
+                    ]
+                }
+                pd.DataFrame(summary_metrics).to_excel(writer, sheet_name='Executive Summary', index=False)
+            
+            # SIPP bond ladder details
+            if not sipp_ladder.empty:
+                sipp_export = sipp_ladder.copy()
+                # Add helpful columns for implementation
+                sipp_export['Estimated_Annual_Income'] = sipp_export['allocation'] * (sipp_export['estimated_ytm'] / 100)
+                sipp_export['Purchase_Priority'] = range(1, len(sipp_export) + 1)
+                sipp_export.to_excel(writer, sheet_name='SIPP Bond Ladder', index=False)
+            
+            # ISA bond ladder details  
+            if not isa_ladder.empty:
+                isa_export = isa_ladder.copy()
+                isa_export['Estimated_Annual_Income'] = isa_export['allocation'] * (isa_export['estimated_ytm'] / 100)
+                isa_export['Purchase_Priority'] = range(1, len(isa_export) + 1)
+                isa_export.to_excel(writer, sheet_name='ISA Bond Ladder', index=False)
+            
+            # Monthly cashflow analysis
+            if annual_data:
+                monthly_cashflow = []
+                for year_data in annual_data[:5]:  # First 5 years detail
+                    monthly_income = {
+                        'Year': year_data['year'],
+                        'Monthly_Target': year_data['target_income'] / 12,
+                        'Monthly_DB_Pension': year_data['db_pension_income'] / 12,
+                        'Monthly_State_Pension': year_data.get('state_pension_income', 0) / 12,
+                        'Monthly_Bond_Income': (year_data['sipp_bond_income'] + year_data['isa_bond_income']) / 12,
+                        'Monthly_Additional_Needed': max(0, (year_data['target_income'] - year_data['db_pension_income'] - year_data.get('state_pension_income', 0) - year_data['sipp_bond_income'] - year_data['isa_bond_income'])) / 12,
+                        'Monthly_Tax': year_data['total_tax'] / 12,
+                        'Monthly_Net_Income': year_data['total_net_income'] / 12
+                    }
+                    monthly_cashflow.append(monthly_income)
+                
+                pd.DataFrame(monthly_cashflow).to_excel(writer, sheet_name='Monthly Cashflow', index=False)
+            
+            # Implementation timeline and checklist
+            implementation_timeline = {
+                'Timeline': [
+                    '6-12 Months Before Retirement',
+                    '6-12 Months Before Retirement', 
+                    '6-12 Months Before Retirement',
+                    '6-12 Months Before Retirement',
+                    '3-6 Months Before Retirement',
+                    '3-6 Months Before Retirement',
+                    '3-6 Months Before Retirement',
+                    '3-6 Months Before Retirement',
+                    '1-3 Months Before Retirement',
+                    '1-3 Months Before Retirement',
+                    '1-3 Months Before Retirement',
+                    'Ongoing Management'
+                ],
+                'Task': [
+                    'Open Interactive Investor SIPP account',
+                    'Open Interactive Investor ISA account',
+                    'Begin transferring funds from current providers',
+                    'Research current bond prices using ISIN codes',
+                    'Start purchasing UK Gilts for SIPP',
+                    'Start purchasing Corporate Bonds for ISA',
+                    'Stagger purchases over 2-3 months',
+                    'Document all purchases with actual YTM',
+                    'Complete final bond purchases',
+                    'Set up drawdown with II (£125 fee)',
+                    'Establish monthly withdrawal schedule',
+                    'Annual review and reinvestment of maturing bonds'
+                ],
+                'Priority': ['High', 'High', 'High', 'Medium', 'High', 'Medium', 'High', 'Medium', 'High', 'High', 'High', 'Medium'],
+                'Estimated_Cost': ['£0', '£0', '£0-200', '£0', '£40-80', '£40-80', '£0', '£0', '£40-80', '£125', '£0', '£40-80 annually'],
+                'Status': ['Pending'] * 12,
+                'Notes': [''] * 12,
+                'Completion_Date': [''] * 12
+            }
+            pd.DataFrame(implementation_timeline).to_excel(writer, sheet_name='Implementation Plan', index=False)
+            
+            # Bond research template
+            if not sipp_ladder.empty or not isa_ladder.empty:
+                research_template = []
+                
+                # Add SIPP bonds
+                if not sipp_ladder.empty:
+                    for _, bond in sipp_ladder.iterrows():
+                        research_template.append({
+                            'Account_Type': 'SIPP',
+                            'ISIN': bond['isin'],
+                            'Bond_Name': bond['bond_name'],
+                            'Target_Maturity': bond['maturity_date'],
+                            'Target_Allocation': f"£{bond['allocation']:,.0f}",
+                            'Estimated_Yield': f"{bond['estimated_ytm']:.2f}%",
+                            'Current_Price': 'TBD - Check II Platform',
+                            'Current_YTM': 'TBD - Calculate',
+                            'Number_of_Bonds_Needed': 'TBD - Allocation ÷ Price',
+                            'Total_Purchase_Cost': 'TBD - Including £7.99 fee',
+                            'Purchase_Date': '',
+                            'Actual_Yield': '',
+                            'Notes': ''
+                        })
+                
+                # Add ISA bonds  
+                if not isa_ladder.empty:
+                    for _, bond in isa_ladder.iterrows():
+                        research_template.append({
+                            'Account_Type': 'ISA',
+                            'ISIN': bond['isin'],
+                            'Bond_Name': bond['bond_name'],
+                            'Target_Maturity': bond['maturity_date'],
+                            'Target_Allocation': f"£{bond['allocation']:,.0f}",
+                            'Estimated_Yield': f"{bond['estimated_ytm']:.2f}%",
+                            'Current_Price': 'TBD - Check II Platform',
+                            'Current_YTM': 'TBD - Calculate',
+                            'Number_of_Bonds_Needed': 'TBD - Allocation ÷ Price',
+                            'Total_Purchase_Cost': 'TBD - Including £7.99 fee',
+                            'Purchase_Date': '',
+                            'Actual_Yield': '',
+                            'Notes': ''
+                        })
+                
+                pd.DataFrame(research_template).to_excel(writer, sheet_name='Bond Research Template', index=False)
+            
+            # Scenario analysis if provided
+            if scenario_results:
+                scenario_summary = []
+                for scenario_name, results in scenario_results.items():
+                    scenario_summary.append({
+                        'Scenario': scenario_name,
+                        'Description': results['description'],
+                        'Final_Portfolio': f"£{results['final_pot']:,}",
+                        'Average_Net_Income': f"£{results['avg_net_income']:,.0f}",
+                        'Average_Tax_Rate': f"{results['avg_tax_rate']:.1f}%"
+                    })
+                pd.DataFrame(scenario_summary).to_excel(writer, sheet_name='Scenario Analysis', index=False)
+        
+        return output.getvalue()
+    except Exception as e:
+        st.error(f"Error creating Excel export: {str(e)}")
+        return Nonedata)
             df_annual.to_excel(writer, sheet_name='Annual Analysis', index=False)
             
             # SIPP bond ladder with recommendations
@@ -1147,37 +1357,181 @@ def main():
             # Implementation timeline
             display_implementation_timeline()
             
-            # Enhanced download section
-            st.subheader("📥 Download Enhanced Reports")
+            # Enhanced download section with comprehensive data
+            st.subheader("📥 Download Complete Analysis")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                # Enhanced CSV download with all data
+                csv_data = df.to_csv(index=False)
+                st.download_button(
+                    label="📊 Download Complete CSV Data",
+                    data=csv_data,
+                    file_name=f"bond_strategy_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    help="Contains all yearly data including income, tax, and portfolio values"
+                )
+            
+            with col2:
+                # Enhanced Excel with multiple sheets
+                excel_data = create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder)
+                if excel_data:
+                    st.download_button(
+                        label="📈 Download Excel Report",
+                        data=excel_data,
+                        file_name=f"complete_bond_strategy_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        help="Multi-sheet Excel with analysis, bond ladders, and implementation guide"
+                    )
+            
+            with col3:
+                # Summary JSON for configuration backup
+                summary_config = {
+                    'analysis_date': datetime.now().isoformat(),
+                    'parameters': {
+                        'sipp_value': sipp_value,
+                        'isa_value': isa_value,
+                        'target_income': target_annual_income,
+                        'bond_ladder_years': bond_ladder_years,
+                        'sipp_strategy': sipp_strategy,
+                        'inflation_rate': inflation_rate,
+                        'investment_growth': investment_growth
+                    },
+                    'key_results': {
+                        'year_1_net_income': first_year['total_net_income'],
+                        'average_tax_rate': avg_tax_rate,
+                        'final_portfolio_value': last_year['total_remaining_pots'],
+                        'total_bond_income': float(total_bond_income),
+                        'strategy_sustainable': last_year['total_remaining_pots'] > 50000
+                    }
+                }
+                config_json = json.dumps(summary_config, indent=2, default=str)
+                st.download_button(
+                    label="⚙️ Download Strategy Config",
+                    data=config_json,
+                    file_name=f"bond_strategy_config_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                    mime="application/json",
+                    help="Configuration backup for recreating this analysis"
+                )
+            
+            # Comprehensive year-by-year analysis table
+            st.subheader("📅 Detailed Year-by-Year Analysis")
+            
+            df = pd.DataFrame(annual_data)
+            
+            # Create comprehensive display with all key columns
+            display_columns = [
+                'year', 'calendar_year', 'target_income', 
+                'db_pension_income', 'state_pension_income', 
+                'sipp_bond_income', 'isa_bond_income',
+                'sipp_tax_free_withdrawal', 'isa_withdrawal', 'sipp_taxable_withdrawal',
+                'total_tax_free_income', 'total_taxable_income', 'total_gross_income',
+                'total_tax', 'effective_tax_rate', 'total_net_income', 'income_vs_target',
+                'remaining_sipp_tax_free', 'remaining_sipp_taxable', 'remaining_isa', 'total_remaining_pots'
+            ]
+            
+            # Filter to only include columns that exist in the data
+            available_columns = [col for col in display_columns if col in df.columns]
+            display_df = df[available_columns].copy()
+            
+            # Enhanced formatting for better readability
+            format_dict = {
+                'target_income': '£{:,.0f}',
+                'db_pension_income': '£{:,.0f}',
+                'state_pension_income': '£{:,.0f}',
+                'sipp_bond_income': '£{:,.0f}',
+                'isa_bond_income': '£{:,.0f}',
+                'sipp_tax_free_withdrawal': '£{:,.0f}',
+                'isa_withdrawal': '£{:,.0f}',
+                'sipp_taxable_withdrawal': '£{:,.0f}',
+                'total_tax_free_income': '£{:,.0f}',
+                'total_taxable_income': '£{:,.0f}',
+                'total_gross_income': '£{:,.0f}',
+                'total_tax': '£{:,.0f}',
+                'effective_tax_rate': '{:.2f}%',
+                'total_net_income': '£{:,.0f}',
+                'income_vs_target': '£{:,.0f}',
+                'remaining_sipp_tax_free': '£{:,.0f}',
+                'remaining_sipp_taxable': '£{:,.0f}',
+                'remaining_isa': '£{:,.0f}',
+                'total_remaining_pots': '£{:,.0f}'
+            }
+            
+            # Apply formatting only to columns that exist
+            existing_format_dict = {k: v for k, v in format_dict.items() if k in display_df.columns}
+            
+            # Display the formatted table
+            st.dataframe(
+                display_df.style.format(existing_format_dict),
+                use_container_width=True,
+                height=500
+            )
+            
+            # Summary statistics below the table
+            st.subheader("📊 Summary Statistics")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                avg_net_income = df['total_net_income'].mean()
+                total_tax_paid = df['total_tax'].sum()
+                st.metric("Average Annual Net Income", f"£{avg_net_income:,.0f}")
+                st.metric("Total Tax Over Period", f"£{total_tax_paid:,.0f}")
+            
+            with col2:
+                avg_tax_rate = df['effective_tax_rate'].mean()
+                years_shortfall = len(df[df['income_vs_target'] < -500])
+                st.metric("Average Tax Rate", f"{avg_tax_rate:.2f}%")
+                st.metric("Years with Income Shortfall", f"{years_shortfall}")
+            
+            with col3:
+                total_sipp_tf_used = df['sipp_tax_free_withdrawal'].sum()
+                total_isa_used = df['isa_withdrawal'].sum()
+                st.metric("Total SIPP Tax-Free Used", f"£{total_sipp_tf_used:,.0f}")
+                st.metric("Total ISA Withdrawals", f"£{total_isa_used:,.0f}")
+            
+            with col4:
+                final_pot = df['total_remaining_pots'].iloc[-1]
+                initial_pot = sipp_value + isa_value
+                pot_change = ((final_pot / initial_pot) - 1) * 100
+                st.metric("Final Portfolio Value", f"£{final_pot:,.0f}")
+                st.metric("Portfolio Change", f"{pot_change:+.1f}%")
+            
+            # Bond income analysis
+            st.subheader("🔗 Bond Income Analysis")
             
             col1, col2 = st.columns(2)
             
             with col1:
-                # CSV download
-                df = pd.DataFrame(annual_data)
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label="📊 Download Analysis CSV",
-                    data=csv,
-                    file_name=f"enhanced_bond_strategy_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
-                )
+                avg_sipp_bond_income = df['sipp_bond_income'].mean()
+                avg_isa_bond_income = df['isa_bond_income'].mean()
+                total_bond_income = avg_sipp_bond_income + avg_isa_bond_income
+                
+                st.metric("Avg Annual SIPP Bond Income", f"£{avg_sipp_bond_income:,.0f}")
+                st.metric("Avg Annual ISA Bond Income", f"£{avg_isa_bond_income:,.0f}")
+                st.metric("Total Avg Bond Income", f"£{total_bond_income:,.0f}")
             
             with col2:
-                # Enhanced Excel with bond recommendations
-                excel_data = create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder)
-                if excel_data:
-                    st.download_button(
-                        label="📈 Download Complete Bond Strategy Report",
-                        data=excel_data,
-                        file_name=f"complete_bond_strategy_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-            
+                # Calculate bond income as % of target
+                bond_income_vs_target = (total_bond_income / target_annual_income) * 100
+                
+                # Check if bond income is stable (shouldn't drop to zero)
+                min_bond_income = (df['sipp_bond_income'] + df['isa_bond_income']).min()
+                max_bond_income = (df['sipp_bond_income'] + df['isa_bond_income']).max()
+                income_stability = (min_bond_income / max_bond_income) * 100 if max_bond_income > 0 else 0
+                
+                st.metric("Bond Income vs Target", f"{bond_income_vs_target:.1f}%")
+                st.metric("Bond Income Stability", f"{income_stability:.1f}%")
+                
+                if income_stability > 80:
+                    st.success("✅ Bond ladder provides stable income")
+                elif income_stability > 60:
+                    st.warning("⚠️ Some bond income volatility")
+                else:
+                    st.error("🚨 Significant bond income instability")
             # Enhanced visualizations
             st.subheader("📈 Strategy Visualization")
-            
-            df = pd.DataFrame(annual_data)
             
             # Create income composition chart
             fig_income = go.Figure()
@@ -1212,6 +1566,17 @@ def main():
                 fillcolor='rgba(255, 99, 132, 0.7)'
             ))
             
+            if 'state_pension_income' in df.columns:
+                fig_income.add_trace(go.Scatter(
+                    x=df['year'],
+                    y=df['state_pension_income'],
+                    stackgroup='one',
+                    name='State Pension',
+                    mode='lines',
+                    line=dict(width=0),
+                    fillcolor='rgba(153, 102, 255, 0.7)'
+                ))
+            
             fig_income.add_trace(go.Scatter(
                 x=df['year'],
                 y=df['sipp_tax_free_withdrawal'] + df['isa_withdrawal'] + df['sipp_taxable_withdrawal'],
@@ -1219,7 +1584,7 @@ def main():
                 name='Additional Withdrawals',
                 mode='lines',
                 line=dict(width=0),
-                fillcolor='rgba(153, 102, 255, 0.7)'
+                fillcolor='rgba(255, 159, 64, 0.7)'
             ))
             
             fig_income.add_trace(go.Scatter(
@@ -1238,6 +1603,56 @@ def main():
             )
             
             st.plotly_chart(fig_income, use_container_width=True)
+            
+            # Portfolio value over time
+            fig_portfolio = go.Figure()
+            
+            fig_portfolio.add_trace(go.Scatter(
+                x=df['year'],
+                y=df['remaining_sipp_tax_free'],
+                mode='lines',
+                name='SIPP Tax-Free',
+                line=dict(color='green', width=2),
+                stackgroup='one',
+                fillcolor='rgba(0, 255, 0, 0.3)'
+            ))
+            
+            fig_portfolio.add_trace(go.Scatter(
+                x=df['year'],
+                y=df['remaining_sipp_taxable'],
+                mode='lines',
+                name='SIPP Taxable',
+                line=dict(color='orange', width=2),
+                stackgroup='one',
+                fillcolor='rgba(255, 165, 0, 0.3)'
+            ))
+            
+            fig_portfolio.add_trace(go.Scatter(
+                x=df['year'],
+                y=df['remaining_isa'],
+                mode='lines',
+                name='ISA',
+                line=dict(color='blue', width=2),
+                stackgroup='one',
+                fillcolor='rgba(0, 0, 255, 0.3)'
+            ))
+            
+            fig_portfolio.add_trace(go.Scatter(
+                x=df['year'],
+                y=df['total_remaining_pots'],
+                mode='lines',
+                name='Total Portfolio',
+                line=dict(color='purple', width=3)
+            ))
+            
+            fig_portfolio.update_layout(
+                title='Portfolio Values Over Time',
+                xaxis_title='Year',
+                yaxis_title='Portfolio Value (£)',
+                height=500
+            )
+            
+            st.plotly_chart(fig_portfolio, use_container_width=True)
             
             # Bond maturity timeline with reinvestment strategy
             st.subheader("🗓️ Bond Ladder Strategy & Reinvestment")
