@@ -847,6 +847,49 @@ def add_sipp_strategy_selection():
     
     return sipp_strategy, upfront_percent
 
+def add_birth_date_state_pension():
+    """Add birth date and state pension configuration"""
+    st.sidebar.subheader("🎂 Birth Date & State Pension")
+    
+    birth_date = st.sidebar.text_input(
+        "Birth Date (DD/MM/YYYY)",
+        value="16/07/1963",
+        help="Your birth date to calculate exact state pension start timing"
+    )
+    
+    state_pension_age = st.sidebar.number_input(
+        "State Pension Age",
+        min_value=65,
+        max_value=68,
+        value=67,
+        help="Age when your state pension begins"
+    )
+    
+    state_pension = st.sidebar.number_input(
+        "Annual State Pension (£)",
+        min_value=0,
+        value=11500,
+        step=100,
+        help="Expected annual state pension amount"
+    )
+    
+    # Show calculated pension start info
+    try:
+        calc = EnhancedSIPPBondCalculator()
+        pension_timing = calc.calculate_state_pension_timing(birth_date, 2027, state_pension_age)
+        
+        st.sidebar.info(f"""
+        **State Pension Details:**
+        - Starts: {pension_timing['pension_start_date'].strftime('%d/%m/%Y')}
+        - Age at retirement: {pension_timing['age_at_retirement']}
+        - Year {pension_timing['pension_start_year']}: {pension_timing['months_in_first_year']} months
+        - First year pro-rata: {pension_timing['pro_rata_factor']:.1%}
+        """)
+    except:
+        st.sidebar.warning("Invalid birth date format. Use DD/MM/YYYY")
+    
+    return birth_date, state_pension_age, state_pension
+
 def display_bond_recommendations(sipp_ladder, isa_ladder):
     """Display specific bond recommendations with purchase instructions"""
     st.subheader("🔗 Specific Bond Recommendations")
