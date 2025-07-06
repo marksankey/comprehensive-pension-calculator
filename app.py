@@ -786,6 +786,7 @@ if year >= pension_timing['pension_start_year'] and state_pension > 0:
                     'calendar_year': current_year,
                     'inflation_factor': round(inflation_factor, 3),
                     'target_income': round(inflation_adjusted_target),
+                    'age_at_year_start': pension_timing['age_at_retirement'] + year - 1,
                     
                     # Income sources breakdown
                     'db_pension_income': round(total_db_income),
