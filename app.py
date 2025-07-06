@@ -447,22 +447,20 @@ class EnhancedSIPPBondCalculator:
                 isa_bonds_total, bond_ladder_years, 'ISA', start_year
             )
             
-            # Calculate initial cash positions
+            # Calculate initial allocations - both tax-free and taxable portions are invested
             sipp_tax_free_ratio = remaining_sipp_tax_free / total_sipp_for_allocation if total_sipp_for_allocation > 0 else 0
             sipp_taxable_ratio = sipp_taxable_total / total_sipp_for_allocation if total_sipp_for_allocation > 0 else 0
             
             # Initial pot values for simulation
-            remaining_sipp_tax_free_pot = (
-                remaining_sipp_tax_free * (sipp_bonds_total / total_sipp_for_allocation) +
-                sipp_cash_buffer * sipp_tax_free_ratio
-            ) if total_sipp_for_allocation > 0 else 0
+            # Both tax-free and taxable amounts are invested in bonds and cash
+            remaining_sipp_tax_free_bonds = remaining_sipp_tax_free * (sipp_bonds_total / total_sipp_for_allocation) if total_sipp_for_allocation > 0 else 0
+            remaining_sipp_tax_free_cash = remaining_sipp_tax_free * (sipp_cash_buffer / total_sipp_for_allocation) if total_sipp_for_allocation > 0 else 0
             
-            remaining_sipp_taxable_pot = (
-                sipp_taxable_total * (sipp_bonds_total / total_sipp_for_allocation) +
-                sipp_cash_buffer * sipp_taxable_ratio
-            ) if total_sipp_for_allocation > 0 else 0
+            remaining_sipp_taxable_bonds = sipp_taxable_total * (sipp_bonds_total / total_sipp_for_allocation) if total_sipp_for_allocation > 0 else 0
+            remaining_sipp_taxable_cash = sipp_taxable_total * (sipp_cash_buffer / total_sipp_for_allocation) if total_sipp_for_allocation > 0 else 0
             
-            remaining_isa_pot = isa_cash_buffer
+            remaining_isa_bonds = isa_bonds_total
+            remaining_isa_cash = isa_cash_buffer
             
             # Defined benefit pensions
             db_pensions = params['db_pensions']
@@ -503,41 +501,68 @@ class EnhancedSIPPBondCalculator:
                 # Check for maturing bonds and calculate income
                 for idx, bond in sipp_ladder.iterrows():
                     if bond['maturity_year'] == current_year and bond['allocation'] > 0:
-                        # Bond matures - add principal back to appropriate pot
+                        # Bond matures - reinvest principal in new 5-year bond
                         principal = bond['allocation']
-                        # Allocate matured principal proportionally
-                        to_tax_free = principal * sipp_tax_free_ratio
-                        to_taxable = principal * sipp_taxable_ratio
+                        to_tax_free_bonds = principal * sipp_tax_free_ratio
+                        to_taxable_bonds = principal * sipp_taxable_ratio
                         
-                        remaining_sipp_tax_free_pot += to_tax_free
-                        remaining_sipp_taxable_pot += to_taxable
+                        remaining_sipp_tax_free_bonds += to_tax_free_bonds
+                        remaining_sipp_taxable_bonds += to_taxable_bonds
+                        
+                        # Reinvest in new bond maturing 5 years later
+                        new_maturity_year = current_year + bond_ladder_years
+                        sipp_ladder.loc[idx, 'maturity_year'] = new_maturity_year
+                        sipp_ladder.loc[idx, 'maturity_date'] = f'{new_maturity_year}-06-30'
+                        sipp_ladder.loc[idx, 'bond_name'] = f'Reinvested Bond {new_maturity_year}'
+                        # Keep same allocation - bond ladder continues
+                        # Update estimated yield for new maturity (yield curve effect)
+                        years_from_now = new_maturity_year - start_year
+                        estimated_new_yield = 4.1 + (years_from_now - bond_ladder_years) * 0.1
+                        sipp_ladder.loc[idx, 'estimated_ytm'] = max(2.0, estimated_new_yield)
+                        sipp_ladder.loc[idx, 'annual_income'] = principal * (sipp_ladder.loc[idx, 'estimated_ytm'] / 100)
                         
                         bonds_maturing_this_year.append({
                             'Type': 'SIPP',
                             'Bond': bond['bond_name'],
                             'ISIN': bond['isin'],
                             'Principal': principal,
-                            'Year': current_year
+                            'Year': current_year,
+                            'Action': f'Reinvested in {new_maturity_year} bond'
                         })
-                        sipp_ladder.loc[idx, 'allocation'] = 0
-                    elif bond['allocation'] > 0:
-                        # Bond still active - earn income
+                    
+                    # Bond income continues regardless of maturity (from current or new bonds)
+                    if bond['allocation'] > 0:
                         sipp_bond_income += bond['annual_income']
                 
                 for idx, bond in isa_ladder.iterrows():
                     if bond['maturity_year'] == current_year and bond['allocation'] > 0:
-                        # Bond matures - add principal back to ISA
-                        remaining_isa_pot += bond['allocation']
+                        # Bond matures - reinvest principal in new bond
+                        principal = bond['allocation']
+                        remaining_isa_bonds += principal
+                        
+                        # Reinvest in new bond maturing 5 years later
+                        new_maturity_year = current_year + bond_ladder_years
+                        isa_ladder.loc[idx, 'maturity_year'] = new_maturity_year
+                        isa_ladder.loc[idx, 'maturity_date'] = f'{new_maturity_year}-06-30'
+                        isa_ladder.loc[idx, 'bond_name'] = f'Reinvested Corporate {new_maturity_year}'
+                        # Keep same allocation - bond ladder continues
+                        # Update estimated yield for new maturity (corporate bonds typically higher yield)
+                        years_from_now = new_maturity_year - start_year
+                        estimated_new_yield = 5.0 + (years_from_now - bond_ladder_years) * 0.15  # Steeper curve for corporates
+                        isa_ladder.loc[idx, 'estimated_ytm'] = max(3.0, estimated_new_yield)
+                        isa_ladder.loc[idx, 'annual_income'] = principal * (isa_ladder.loc[idx, 'estimated_ytm'] / 100)
+                        
                         bonds_maturing_this_year.append({
                             'Type': 'ISA',
                             'Bond': bond['bond_name'],
                             'ISIN': bond['isin'],
-                            'Principal': bond['allocation'],
-                            'Year': current_year
+                            'Principal': principal,
+                            'Year': current_year,
+                            'Action': f'Reinvested in {new_maturity_year} corporate bond'
                         })
-                        isa_ladder.loc[idx, 'allocation'] = 0
-                    elif bond['allocation'] > 0:
-                        # Bond still active - earn income
+                    
+                    # Bond income continues regardless of maturity (from current or new bonds)
+                    if bond['allocation'] > 0:
                         isa_bond_income += bond['annual_income']
                 
                 # Calculate guaranteed income before additional withdrawals
@@ -566,15 +591,20 @@ class EnhancedSIPPBondCalculator:
                 additional_tax = 0
                 
                 if additional_net_needed > 0:
-                    # Apply maximum withdrawal rate check
-                    total_available_pots = remaining_sipp_tax_free_pot + remaining_sipp_taxable_pot + remaining_isa_pot
-                    max_allowed_withdrawal = total_available_pots * (max_withdrawal_rate / 100)
+                    # Calculate total available amounts (bonds + cash for each type)
+                    total_sipp_tax_free_available = remaining_sipp_tax_free_bonds + remaining_sipp_tax_free_cash
+                    total_sipp_taxable_available = remaining_sipp_taxable_bonds + remaining_sipp_taxable_cash  
+                    total_isa_available = remaining_isa_bonds + remaining_isa_cash
+                    
+                    # Apply maximum withdrawal rate check to total investment pots
+                    total_available_investment_pots = total_sipp_tax_free_available + total_sipp_taxable_available + total_isa_available
+                    max_allowed_withdrawal = total_available_investment_pots * (max_withdrawal_rate / 100)
                     
                     # Use optimized withdrawal order
                     available_sources = {
-                        'sipp_tax_free': min(remaining_sipp_tax_free_pot, max_allowed_withdrawal),
-                        'isa': remaining_isa_pot,
-                        'sipp_taxable': remaining_sipp_taxable_pot
+                        'sipp_tax_free': total_sipp_tax_free_available,
+                        'isa': total_isa_available,
+                        'sipp_taxable': total_sipp_taxable_available
                     }
                     
                     withdrawal_plan = self.optimize_withdrawal_order(
@@ -584,7 +614,7 @@ class EnhancedSIPPBondCalculator:
                         current_personal_allowance
                     )
                     
-                    # Apply max withdrawal rate constraint
+                    # Apply max withdrawal rate constraint 
                     total_planned_withdrawal = (
                         withdrawal_plan['sipp_tax_free'] + 
                         withdrawal_plan['isa_withdrawal'] + 
@@ -604,10 +634,33 @@ class EnhancedSIPPBondCalculator:
                     sipp_taxable_withdrawal = withdrawal_plan['sipp_taxable']
                     additional_tax = withdrawal_plan['total_tax']
                     
-                    # Update remaining pots
-                    remaining_sipp_tax_free_pot -= sipp_tax_free_withdrawal
-                    remaining_sipp_taxable_pot -= sipp_taxable_withdrawal
-                    remaining_isa_pot -= isa_withdrawal
+                    # Update remaining amounts - withdraw from cash first, then bonds
+                    # SIPP Tax-Free withdrawals
+                    if sipp_tax_free_withdrawal > 0:
+                        if remaining_sipp_tax_free_cash >= sipp_tax_free_withdrawal:
+                            remaining_sipp_tax_free_cash -= sipp_tax_free_withdrawal
+                        else:
+                            bonds_needed = sipp_tax_free_withdrawal - remaining_sipp_tax_free_cash
+                            remaining_sipp_tax_free_cash = 0
+                            remaining_sipp_tax_free_bonds -= bonds_needed
+                    
+                    # ISA withdrawals
+                    if isa_withdrawal > 0:
+                        if remaining_isa_cash >= isa_withdrawal:
+                            remaining_isa_cash -= isa_withdrawal
+                        else:
+                            bonds_needed = isa_withdrawal - remaining_isa_cash
+                            remaining_isa_cash = 0
+                            remaining_isa_bonds -= bonds_needed
+                    
+                    # SIPP Taxable withdrawals
+                    if sipp_taxable_withdrawal > 0:
+                        if remaining_sipp_taxable_cash >= sipp_taxable_withdrawal:
+                            remaining_sipp_taxable_cash -= sipp_taxable_withdrawal
+                        else:
+                            bonds_needed = sipp_taxable_withdrawal - remaining_sipp_taxable_cash
+                            remaining_sipp_taxable_cash = 0
+                            remaining_sipp_taxable_bonds -= bonds_needed
                 
                 # Calculate final totals
                 total_tax_free_income = guaranteed_tax_free_income + sipp_tax_free_withdrawal + isa_withdrawal
@@ -616,11 +669,12 @@ class EnhancedSIPPBondCalculator:
                 total_gross_income = total_tax_free_income + total_taxable_income
                 total_net_income = total_gross_income - total_tax
                 
-                # Apply growth to remaining pots
+                # Apply growth to invested portions only (bonds grow, cash doesn't)
                 growth_factor = 1 + (investment_growth / 100)
-                remaining_sipp_tax_free_pot *= growth_factor
-                remaining_sipp_taxable_pot *= growth_factor
-                remaining_isa_pot *= growth_factor
+                remaining_sipp_tax_free_bonds *= growth_factor
+                remaining_sipp_taxable_bonds *= growth_factor
+                remaining_isa_bonds *= growth_factor
+                # Cash buffers remain unchanged (no growth applied)
                 
                 # Calculate effective tax rate
                 effective_tax_rate = (total_tax / total_gross_income * 100) if total_gross_income > 0 else 0
@@ -655,11 +709,15 @@ class EnhancedSIPPBondCalculator:
                     'total_net_income': round(total_net_income),
                     'income_vs_target': round(total_net_income - inflation_adjusted_target),
                     
-                    # Remaining pot values
-                    'remaining_sipp_tax_free': round(remaining_sipp_tax_free_pot),
-                    'remaining_sipp_taxable': round(remaining_sipp_taxable_pot),
-                    'remaining_isa': round(remaining_isa_pot),
-                    'total_remaining_pots': round(remaining_sipp_tax_free_pot + remaining_sipp_taxable_pot + remaining_isa_pot),
+                    # Remaining pot values - properly calculated
+                    'remaining_sipp_tax_free': round(remaining_sipp_tax_free_bonds + remaining_sipp_tax_free_cash),
+                    'remaining_sipp_taxable': round(remaining_sipp_taxable_bonds + remaining_sipp_taxable_cash),
+                    'remaining_isa': round(remaining_isa_bonds + remaining_isa_cash),
+                    'total_remaining_pots': round(
+                        remaining_sipp_tax_free_bonds + remaining_sipp_tax_free_cash +
+                        remaining_sipp_taxable_bonds + remaining_sipp_taxable_cash +
+                        remaining_isa_bonds + remaining_isa_cash
+                    ),
                     
                     # Additional info
                     'bonds_maturing': bonds_maturing_this_year,
@@ -1181,26 +1239,40 @@ def main():
             
             st.plotly_chart(fig_income, use_container_width=True)
             
-            # Bond maturity timeline
-            st.subheader("🗓️ Bond Maturity Calendar")
+            # Bond maturity timeline with reinvestment strategy
+            st.subheader("🗓️ Bond Ladder Strategy & Reinvestment")
+            
+            st.info("""
+            **How the Bond Ladder Works:**
+            - When bonds mature, principal is automatically reinvested in new 5-year bonds
+            - This maintains steady income flow throughout retirement
+            - Yield adjustments reflect changing interest rate environment
+            - SIPP bonds → UK Gilts, ISA bonds → Corporate bonds for higher yield
+            """)
             
             col1, col2 = st.columns(2)
             
             with col1:
-                st.write("**SIPP Bond Maturities**")
+                st.write("**SIPP Bond Schedule (with Reinvestment)**")
                 if not sipp_ladder.empty:
-                    maturity_calendar = sipp_ladder[['maturity_year', 'bond_name', 'allocation']].copy()
+                    maturity_calendar = sipp_ladder[['maturity_year', 'bond_name', 'allocation', 'estimated_ytm']].copy()
                     maturity_calendar['allocation'] = maturity_calendar['allocation'].apply(lambda x: f"£{x:,.0f}")
+                    maturity_calendar['estimated_ytm'] = maturity_calendar['estimated_ytm'].apply(lambda x: f"{x:.2f}%")
                     maturity_calendar = maturity_calendar.sort_values('maturity_year')
                     st.dataframe(maturity_calendar, use_container_width=True)
+                    
+                    st.caption("💡 When each bond matures, principal reinvests in new 5-year UK Gilt")
             
             with col2:
-                st.write("**ISA Bond Maturities**")
+                st.write("**ISA Bond Schedule (with Reinvestment)**")
                 if not isa_ladder.empty:
-                    isa_maturity_calendar = isa_ladder[['maturity_year', 'bond_name', 'allocation']].copy()
+                    isa_maturity_calendar = isa_ladder[['maturity_year', 'bond_name', 'allocation', 'estimated_ytm']].copy()
                     isa_maturity_calendar['allocation'] = isa_maturity_calendar['allocation'].apply(lambda x: f"£{x:,.0f}")
+                    isa_maturity_calendar['estimated_ytm'] = isa_maturity_calendar['estimated_ytm'].apply(lambda x: f"{x:.2f}%")
                     isa_maturity_calendar = isa_maturity_calendar.sort_values('maturity_year')
                     st.dataframe(isa_maturity_calendar, use_container_width=True)
+                    
+                    st.caption("💡 When each bond matures, principal reinvests in new 5-year Corporate bond")
             
             # Interactive Investor specific guidance
             st.subheader("🏦 Interactive Investor Implementation")
