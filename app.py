@@ -1241,7 +1241,7 @@ def main():
     # Pension inputs
     st.sidebar.subheader("🏛️ Defined Benefit Pensions")
     
-    nhs_pension = st.sidebar.number_input("NHS Pension (£/year)", min_value=0, value=13000, step=500)
+    db_pension = st.sidebar.number_input("DB Pension (£/year)", min_value=0, value=13000, step=500)
     state_pension = st.sidebar.number_input("State Pension (£/year)", min_value=0, value=11500, step=100)
     state_pension_start_year = st.sidebar.slider("State Pension Start Year", min_value=1, max_value=20, value=5)
     
@@ -1258,7 +1258,7 @@ def main():
         try:
             # Prepare parameters
             db_pensions = {
-                'NHS Pension': nhs_pension
+                'DB Pension': db_pension
             }
             
             base_params = {
@@ -1533,7 +1533,7 @@ def main():
                 x=df['year'],
                 y=df['db_pension_income'],
                 stackgroup='one',
-                name='NHS Pension',
+                name='DB Pension',
                 mode='lines',
                 line=dict(width=0),
                 fillcolor='rgba(255, 99, 132, 0.7)'
