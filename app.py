@@ -1118,17 +1118,17 @@ def create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder, scenario_
         df_annual.to_excel(writer, sheet_name='Annual Analysis', index=False)
         
         # SIPP bond ladder with recommendations
-            if not sipp_ladder.empty:
+        if not sipp_ladder.empty:
                 sipp_export = sipp_ladder.copy()
                 sipp_export.to_excel(writer, sheet_name='SIPP Bond Ladder', index=False)
             
             # ISA bond ladder with recommendations
-            if not isa_ladder.empty:
-                isa_export = isa_ladder.copy()
-                isa_export.to_excel(writer, sheet_name='ISA Bond Ladder', index=False)
+                if not isa_ladder.empty:
+                    isa_export = isa_ladder.copy()
+                    isa_export.to_excel(writer, sheet_name='ISA Bond Ladder', index=False)
             
             # Implementation checklist
-            checklist_data = {
+                checklist_data = {
                 'Phase': [
                     '6-12 Months Before', '6-12 Months Before', '6-12 Months Before',
                     '3-6 Months Before', '3-6 Months Before', '3-6 Months Before',
@@ -1148,13 +1148,13 @@ def create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder, scenario_
                 'Status': ['Pending'] * 9,
                 'Notes': [''] * 9
             }
-            pd.DataFrame(checklist_data).to_excel(writer, sheet_name='Implementation Checklist', index=False)
+                pd.DataFrame(checklist_data).to_excel(writer, sheet_name='Implementation Checklist', index=False)
             
             # Bond research template
-            if not sipp_ladder.empty:
-                research_template = []
-                for _, bond in sipp_ladder.iterrows():
-                    research_template.append({
+                if not sipp_ladder.empty:
+                    research_template = []
+                    for _, bond in sipp_ladder.iterrows():
+                        research_template.append({
                         'ISIN': bond['isin'],
                         'Bond Name': bond['bond_name'],
                         'Target Allocation': f"£{bond['allocation']:,.0f}",
