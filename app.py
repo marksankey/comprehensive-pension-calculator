@@ -452,7 +452,6 @@ class EnhancedSIPPBondCalculator:
             sipp_taxable_ratio = sipp_taxable_total / total_sipp_for_allocation if total_sipp_for_allocation > 0 else 0
             
             # Initial pot values for simulation
-            # Both tax-free and taxable amounts are invested in bonds and cash
             remaining_sipp_tax_free_bonds = remaining_sipp_tax_free * (sipp_bonds_total / total_sipp_for_allocation) if total_sipp_for_allocation > 0 else 0
             remaining_sipp_tax_free_cash = remaining_sipp_tax_free * (sipp_cash_buffer / total_sipp_for_allocation) if total_sipp_for_allocation > 0 else 0
             
@@ -884,7 +883,7 @@ def get_current_gilt_yields():
             'yield_2y': yield_2y,
             'source': 'Market Simulation',
             'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M'),
-            'curve_shape': 'Normal' if yield_10y > yield_5y > yield_2y else 'Inverted'
+            'curve_shape': 'Normal' if current_10y > yield_5y > yield_2y else 'Inverted'
         }
     except Exception as e:
         return {
@@ -1115,63 +1114,6 @@ def create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder, scenario_
     except Exception as e:
         st.error(f"Error creating Excel export: {str(e)}")
         return None
-        df_annual.to_excel(writer, sheet_name='Annual Analysis', index=False)
-        
-        # SIPP bond ladder with recommendations
-        if not sipp_ladder.empty:
-                sipp_export = sipp_ladder.copy()
-                sipp_export.to_excel(writer, sheet_name='SIPP Bond Ladder', index=False)
-            
-            # ISA bond ladder with recommendations
-                if not isa_ladder.empty:
-                    isa_export = isa_ladder.copy()
-                    isa_export.to_excel(writer, sheet_name='ISA Bond Ladder', index=False)
-            
-            # Implementation checklist
-                checklist_data = {
-                'Phase': [
-                    '6-12 Months Before', '6-12 Months Before', '6-12 Months Before',
-                    '3-6 Months Before', '3-6 Months Before', '3-6 Months Before',
-                    '1-3 Months Before', '1-3 Months Before', '1-3 Months Before'
-                ],
-                'Task': [
-                    'Open II SIPP and ISA accounts',
-                    'Transfer funds from current providers',
-                    'Research bond prices using ISINs',
-                    'Begin purchasing bonds (start with gilts)',
-                    'Stagger purchases over 2-3 months',
-                    'Document all purchases with YTM',
-                    'Complete final bond purchases',
-                    'Set up drawdown with II',
-                    'Establish withdrawal schedule'
-                ],
-                'Status': ['Pending'] * 9,
-                'Notes': [''] * 9
-            }
-                pd.DataFrame(checklist_data).to_excel(writer, sheet_name='Implementation Checklist', index=False)
-            
-            # Bond research template
-                if not sipp_ladder.empty:
-                    research_template = []
-                    for _, bond in sipp_ladder.iterrows():
-                        research_template.append({
-                        'ISIN': bond['isin'],
-                        'Bond Name': bond['bond_name'],
-                        'Target Allocation': f"£{bond['allocation']:,.0f}",
-                        'Current Price': 'TBD',
-                        'Current YTM': 'TBD',
-                        'Bonds to Buy': 'TBD',
-                        'Total Cost': 'TBD',
-                        'Purchase Date': 'TBD',
-                        'Notes': ''
-                    })
-                
-                pd.DataFrame(research_template).to_excel(writer, sheet_name='Bond Research Template', index=False)
-        
-        return output.getvalue()
-    except Exception as e:
-        st.error(f"Error creating Excel export: {str(e)}")
-        return None
 
 def main():
     st.title("💰 Enhanced SIPP Bond Strategy Calculator")
@@ -1193,7 +1135,7 @@ def main():
     # Enhanced help system
     with st.expander("❓ Enhanced Bond Strategy Features"):
         st.markdown("""
-        ## 🎯 New Features in This Enhanced Version
+        ## 🎯 Key Features
         
         **✅ Specific Bond Recommendations**
         - Actual UK Gilt ISINs with maturity dates
@@ -1216,7 +1158,7 @@ def main():
     
     calc = EnhancedSIPPBondCalculator()
     
-    # Sidebar inputs (same as before but enhanced)
+    # Sidebar inputs
     st.sidebar.header("📊 Portfolio Parameters")
     
     # Portfolio values
@@ -1364,6 +1306,7 @@ def main():
             
             with col1:
                 # Enhanced CSV download with all data
+                df = pd.DataFrame(annual_data)
                 csv_data = df.to_csv(index=False)
                 st.download_button(
                     label="📊 Download Complete CSV Data",
@@ -1400,9 +1343,9 @@ def main():
                     },
                     'key_results': {
                         'year_1_net_income': first_year['total_net_income'],
-                        'average_tax_rate': avg_tax_rate,
+                        'average_tax_rate': np.mean([year['effective_tax_rate'] for year in annual_data]),
                         'final_portfolio_value': last_year['total_remaining_pots'],
-                        'total_bond_income': float(total_bond_income),
+                        'total_bond_income': sum([year['sipp_bond_income'] + year['isa_bond_income'] for year in annual_data]),
                         'strategy_sustainable': last_year['total_remaining_pots'] > 50000
                     }
                 }
@@ -1530,6 +1473,7 @@ def main():
                     st.warning("⚠️ Some bond income volatility")
                 else:
                     st.error("🚨 Significant bond income instability")
+            
             # Enhanced visualizations
             st.subheader("📈 Strategy Visualization")
             
@@ -1739,7 +1683,7 @@ def main():
             
             # Calculate some key metrics for recommendations
             avg_tax_rate = np.mean([year['effective_tax_rate'] for year in annual_data])
-            total_bond_income = sum([year['sipp_bond_income'] + year['isa_bond_income'] for year in annual_data])
+            total_bond_income_yearly = sum([year['sipp_bond_income'] + year['isa_bond_income'] for year in annual_data])
             
             recommendations = []
             
@@ -1839,31 +1783,29 @@ def main():
         st.info("👆 Configure your parameters and click 'Calculate Enhanced Bond Strategy' to see specific bond recommendations.")
         
         # Show sample bond recommendations
-        st.subheader("🔗 Sample Bond Recommendations")
+        st.subheader("🔗 Sample Bond Universe")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.write("**Sample SIPP Bonds (UK Gilts)**")
-            sample_sipp = pd.DataFrame({
+            st.write("**UK Gilts (SIPP)**")
+            sample_gilts = pd.DataFrame({
                 'Bond Name': ['UK Treasury 4.25% 2027', 'UK Treasury 1.625% 2028', 'UK Treasury 0.875% 2029'],
                 'ISIN': ['GB00B16NNR78', 'GB00BFWFPP71', 'GB00BJMHB534'],
                 'Maturity': ['2027-12-07', '2028-10-22', '2029-10-31'],
-                'Coupon': ['4.25%', '1.625%', '0.875%'],
-                'Rating': ['AA', 'AA', 'AA']
+                'Coupon': ['4.25%', '1.625%', '0.875%']
             })
-            st.dataframe(sample_sipp, use_container_width=True)
+            st.dataframe(sample_gilts, use_container_width=True)
         
         with col2:
-            st.write("**Sample ISA Bonds (Corporate)**")
-            sample_isa = pd.DataFrame({
+            st.write("**Corporate Bonds (ISA)**")
+            sample_corporates = pd.DataFrame({
                 'Bond Name': ['National Grid 2.625% 2028', 'BT Group 4.25% 2029', 'Vodafone 4.875% 2030'],
                 'ISIN': ['GB00BZ03MX94', 'GB00BMF5JQ11', 'GB00BM8QGX98'],
-                'Maturity': ['2028-06-16', '2029-11-23', '2030-07-03'],
-                'Coupon': ['2.625%', '4.25%', '4.875%'],
+                'Sector': ['Utilities', 'Telecommunications', 'Telecommunications'],
                 'Rating': ['BBB+', 'BBB', 'BBB']
             })
-            st.dataframe(sample_isa, use_container_width=True)
+            st.dataframe(sample_corporates, use_container_width=True)
         
         # Feature highlights
         st.subheader("🌟 Enhanced Features")
