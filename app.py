@@ -1114,10 +1114,10 @@ def create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder, scenario_
         return output.getvalue()
     except Exception as e:
         st.error(f"Error creating Excel export: {str(e)}")
-        return Nonedata)
-            df_annual.to_excel(writer, sheet_name='Annual Analysis', index=False)
-            
-            # SIPP bond ladder with recommendations
+        return None
+        df_annual.to_excel(writer, sheet_name='Annual Analysis', index=False)
+        
+        # SIPP bond ladder with recommendations
             if not sipp_ladder.empty:
                 sipp_export = sipp_ladder.copy()
                 sipp_export.to_excel(writer, sheet_name='SIPP Bond Ladder', index=False)
