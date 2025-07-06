@@ -1,9 +1,13 @@
-import streamlit as st
+# Apply inflation to state pension if it's active
+                if state_pension_income > 0:
+                    state_pension_income *= inflation_factor    
+    def optimize_withdrawal_order(self, target_net_income: float, available_sources: Dict,import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+import calendar
 import math
 import logging
 import traceback
@@ -316,7 +320,29 @@ class EnhancedSIPPBondCalculator:
         allocation_per_year = total_investment / ladder_years
         return self.get_bond_recommendations(allocation_per_year, ladder_years, account_type, start_year)
     
-    def optimize_withdrawal_order(self, target_net_income: float, available_sources: Dict, 
+    def calculate_state_pension_income(self, birth_date: date, state_pension_age: int, 
+                                      state_pension_annual: float, current_year: int, 
+                                      retirement_start_year: int) -> float:
+        """Calculate state pension income for a given year, including pro-rating"""
+        # Calculate the year and month when state pension starts
+        pension_start_date = date(birth_date.year + state_pension_age, birth_date.month, birth_date.day)
+        pension_start_year = pension_start_date.year
+        
+        # If current simulation year is before pension start year, no income
+        simulation_calendar_year = retirement_start_year + current_year - 1
+        if simulation_calendar_year < pension_start_year:
+            return 0.0
+        
+        # If current simulation year is exactly the pension start year, pro-rate
+        elif simulation_calendar_year == pension_start_year:
+            # Calculate how many months of pension in the first year
+            months_remaining = 12 - pension_start_date.month + 1  # Include the start month
+            pro_rata_factor = months_remaining / 12
+            return state_pension_annual * pro_rata_factor
+        
+        # If after pension start year, full annual amount
+        else:
+            return state_pension_annual 
                                 additional_taxable_income: float, personal_allowance: float) -> Dict:
         """Optimize withdrawal order for tax efficiency"""
         withdrawal_plan = {
@@ -468,7 +494,8 @@ class EnhancedSIPPBondCalculator:
             # Defined benefit pensions
             db_pensions = params['db_pensions']
             state_pension = params.get('state_pension', 0)
-            state_pension_start_year = params.get('state_pension_start_year', 10)
+            birth_date = params.get('birth_date')
+            state_pension_age = params.get('state_pension_age', 67)
             
             # Other parameters
             max_withdrawal_rate = params.get('max_withdrawal_rate', 4.0)
@@ -491,10 +518,12 @@ class EnhancedSIPPBondCalculator:
                         adjusted_amount = amount * inflation_factor
                         total_db_income += adjusted_amount
                 
-                # State pension
+                # State pension with date-based calculation
                 state_pension_income = 0
-                if year >= state_pension_start_year and state_pension > 0:
-                    state_pension_income = state_pension * inflation_factor
+                if state_pension > 0 and birth_date:
+                    state_pension_income = self.calculate_state_pension_income(
+                        birth_date, state_pension_age, state_pension, year, start_year
+                    )
                 
                 # Bond income from ladders
                 sipp_bond_income = 0
@@ -1241,9 +1270,39 @@ def main():
     # Pension inputs
     st.sidebar.subheader("🏛️ Defined Benefit Pensions")
     
-    db_pension = st.sidebar.number_input("DB Pension (£/year)", min_value=0, value=13500, step=500, key="db_pension_input")
-    state_pension = st.sidebar.number_input("State Pension (£/year)", min_value=0, value=11500, step=100)
-    state_pension_start_year = st.sidebar.slider("State Pension Start Year", min_value=1, max_value=20, value=5)
+    db_pension = st.sidebar.number_input("DB Pension (£/year)", min_value=0, value=13000, step=500, key="db_pension_input")
+    
+    # State pension with date-based calculation
+    st.sidebar.write("**State Pension Settings**")
+    birth_date = st.sidebar.date_input(
+        "Your Birth Date", 
+        value=date(1963, 7, 15),  # Default to July 1963 to match your example
+        help="Enter your birth date to calculate when state pension starts"
+    )
+    
+    state_pension_age = st.sidebar.number_input(
+        "State Pension Age", 
+        min_value=60, 
+        max_value=70, 
+        value=67, 
+        step=1,
+        help="Age when you become eligible for state pension"
+    )
+    
+    state_pension = st.sidebar.number_input(
+        "State Pension (£/year)", 
+        min_value=0, 
+        value=11500, 
+        step=100,
+        help="Annual state pension amount"
+    )
+    
+    # Calculate and display when state pension starts
+    pension_start_date = date(birth_date.year + state_pension_age, birth_date.month, birth_date.day)
+    st.sidebar.caption(f"💡 State pension starts: {pension_start_date.strftime('%B %Y')}")
+    
+    # Remove the old state pension start year slider
+    # state_pension_start_year = st.sidebar.slider("State Pension Start Year", min_value=1, max_value=20, value=5)
     
     # Economic parameters
     st.sidebar.subheader("📈 Economic Assumptions")
@@ -1271,7 +1330,8 @@ def main():
                 'cash_buffer_percent': cash_buffer_percent,
                 'db_pensions': db_pensions,
                 'state_pension': state_pension,
-                'state_pension_start_year': state_pension_start_year,
+                'birth_date': birth_date,
+                'state_pension_age': state_pension_age,
                 'inflation_rate': inflation_rate,
                 'investment_growth': investment_growth,
                 'max_withdrawal_rate': max_withdrawal_rate,
