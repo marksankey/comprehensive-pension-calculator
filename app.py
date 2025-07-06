@@ -525,7 +525,6 @@ class EnhancedSIPPBondCalculator:
             # Defined benefit pensions
             db_pensions = params['db_pensions']
             state_pension = params.get('state_pension', 0)
-            state_pension_start_year = params.get('state_pension_start_year', 10)
 
             # State pension parameters with birth date
             birth_date = params.get('birth_date', '16/07/1963')
@@ -791,6 +790,8 @@ if year >= pension_timing['pension_start_year'] and state_pension > 0:
                     # Income sources breakdown
                     'db_pension_income': round(total_db_income),
                     'state_pension_income': round(state_pension_income),
+                    'state_pension_months': pension_timing['months_in_first_year'] if year == pension_timing['pension_start_year'] else 12,
+                    'state_pension_pro_rata': pension_timing['pro_rata_factor'] if year == pension_timing['pension_start_year'] else 1.0,
                     'sipp_bond_income': round(sipp_bond_income),
                     'isa_bond_income': round(isa_bond_income),
                     'sipp_tax_free_withdrawal': round(sipp_tax_free_withdrawal),
