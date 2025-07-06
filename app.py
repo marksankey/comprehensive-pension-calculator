@@ -548,10 +548,16 @@ class EnhancedSIPPBondCalculator:
                         adjusted_amount = amount * inflation_factor
                         total_db_income += adjusted_amount
                 
-                # State pension
-                state_pension_income = 0
-                if year >= state_pension_start_year and state_pension > 0:
-                    state_pension_income = state_pension * inflation_factor
+# State pension with birth date based timing and pro-rating
+state_pension_income = 0
+if year >= pension_timing['pension_start_year'] and state_pension > 0:
+    base_pension = state_pension * inflation_factor
+    if year == pension_timing['pension_start_year']:
+        # Pro-rate for first year based on actual start date
+        state_pension_income = base_pension * pension_timing['pro_rata_factor']
+    else:
+        # Full pension for subsequent years
+        state_pension_income = base_pension
                 
                 # Bond income from ladders
                 sipp_bond_income = 0
