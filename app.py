@@ -668,12 +668,21 @@ class EnhancedSIPPBondCalculator:
                 total_gross_income = total_tax_free_income + total_taxable_income
                 total_net_income = total_gross_income - total_tax
                 
-                # Apply growth to invested portions only (bonds grow, cash doesn't)
-                growth_factor = 1 + (investment_growth / 100)
-                remaining_sipp_tax_free_bonds *= growth_factor
-                remaining_sipp_taxable_bonds *= growth_factor
-                remaining_isa_bonds *= growth_factor
-                # Cash buffers remain unchanged (no growth applied)
+                # Apply growth correctly: Only cash earns growth (like bank interest)
+                # Bonds maintain fixed principal until maturity - we already take the income
+                cash_growth_factor = 1 + (investment_growth / 100)
+                
+                # Only cash portions grow (bank interest/money market returns)
+                remaining_sipp_tax_free_cash *= cash_growth_factor
+                remaining_sipp_taxable_cash *= cash_growth_factor
+                remaining_isa_cash *= cash_growth_factor
+                
+                # Bond portions remain at face value (no growth applied)
+                # remaining_sipp_tax_free_bonds *= 1.0  # No change - bonds are fixed principal
+                # remaining_sipp_taxable_bonds *= 1.0   # No change - bonds are fixed principal  
+                # remaining_isa_bonds *= 1.0            # No change - bonds are fixed principal
+                
+                # Note: When bonds mature, we get back exactly the face value to reinvest
                 
                 # Calculate effective tax rate
                 effective_tax_rate = (total_tax / total_gross_income * 100) if total_gross_income > 0 else 0
