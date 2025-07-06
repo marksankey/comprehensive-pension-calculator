@@ -526,6 +526,16 @@ class EnhancedSIPPBondCalculator:
             db_pensions = params['db_pensions']
             state_pension = params.get('state_pension', 0)
             state_pension_start_year = params.get('state_pension_start_year', 10)
+
+            # State pension parameters with birth date
+            birth_date = params.get('birth_date', '16/07/1963')
+            state_pension = params.get('state_pension', 0)
+            state_pension_age = params.get('state_pension_age', 67)
+
+            # Calculate state pension timing
+            pension_timing = self.calculate_state_pension_timing(
+                birth_date, start_year, state_pension_age
+            )
             
             # Other parameters
             max_withdrawal_rate = params.get('max_withdrawal_rate', 4.0)
