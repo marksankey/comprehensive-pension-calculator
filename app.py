@@ -1360,8 +1360,8 @@ def main():
     st.sidebar.subheader("🏛️ Defined Benefit Pensions")
     
     db_pension = st.sidebar.number_input("DB Pension (£/year)", min_value=0, value=13500, step=500, key="db_pension_input")
-    state_pension = st.sidebar.number_input("State Pension (£/year)", min_value=0, value=11500, step=100)
-    state_pension_start_year = st.sidebar.slider("State Pension Start Year", min_value=1, max_value=20, value=5)
+     # Birth date and state pension
+    birth_date, state_pension_age, state_pension = add_birth_date_state_pension()
     
     # Economic parameters
     st.sidebar.subheader("📈 Economic Assumptions")
