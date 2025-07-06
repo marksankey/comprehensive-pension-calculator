@@ -295,14 +295,15 @@ class EnhancedSIPPBondCalculator:
         # Select appropriate bond universe
         if account_type.lower() == 'sipp':
             bond_universe = self.uk_gilts
-            target_yield_base = 4.1
+            target_yield_base = 4.2  # More realistic base yield for UK Gilts
         else:  # ISA
             bond_universe = {**self.uk_gilts, **self.corporate_bonds}
-            target_yield_base = 5.0
+            target_yield_base = 4.8  # More realistic base yield for corporate bonds
         
         for year_offset in range(ladder_years):
             target_year = start_year + year_offset
-            target_yield = target_yield_base + (year_offset * 0.2)
+            # More conservative yield curve - small increases for longer maturities
+            target_yield = target_yield_base + (year_offset * 0.05)  # 0.05% increase per year instead of 0.2%
             
             # Find bonds maturing in or near target year
             suitable_bonds = []
@@ -590,9 +591,11 @@ class EnhancedSIPPBondCalculator:
                         # allocation stays exactly the same - no change to portfolio value
                         
                         # Update yield for new bond but allocation unchanged
+                        # More conservative yield assumptions for UK Gilts
                         years_from_now = new_maturity_year - start_year
-                        estimated_new_yield = 4.1 + (years_from_now - bond_ladder_years) * 0.1
-                        sipp_ladder.loc[idx, 'estimated_ytm'] = max(2.0, estimated_new_yield)
+                        # Cap yield increases and use more realistic assumptions
+                        estimated_new_yield = min(4.8, 4.1 + (years_from_now - bond_ladder_years) * 0.02)
+                        sipp_ladder.loc[idx, 'estimated_ytm'] = max(2.5, estimated_new_yield)
                         sipp_ladder.loc[idx, 'annual_income'] = principal * (sipp_ladder.loc[idx, 'estimated_ytm'] / 100)
                         
                         # Record maturity but NO CHANGE to remaining bond amounts
@@ -622,9 +625,11 @@ class EnhancedSIPPBondCalculator:
                         # allocation stays exactly the same - no change to portfolio value
                         
                         # Update yield for new bond but allocation unchanged
+                        # More realistic yield assumptions for corporate bonds
                         years_from_now = new_maturity_year - start_year
-                        estimated_new_yield = 5.0 + (years_from_now - bond_ladder_years) * 0.15
-                        isa_ladder.loc[idx, 'estimated_ytm'] = max(3.0, estimated_new_yield)
+                        # Corporate bonds trade at premium to gilts but cap at reasonable levels
+                        estimated_new_yield = min(5.5, 5.0 + (years_from_now - bond_ladder_years) * 0.03)
+                        isa_ladder.loc[idx, 'estimated_ytm'] = max(3.5, estimated_new_yield)
                         isa_ladder.loc[idx, 'annual_income'] = principal * (isa_ladder.loc[idx, 'estimated_ytm'] / 100)
                         
                         # Record maturity but NO CHANGE to remaining bond amounts
@@ -1770,6 +1775,12 @@ def main():
             - This maintains steady income flow throughout retirement
             - Yield adjustments reflect changing interest rate environment
             - SIPP bonds → UK Gilts, ISA bonds → Corporate bonds for higher yield
+            
+            **⚠️ Yield Assumptions:**
+            - YTM estimates are conservative projections, not guaranteed returns
+            - Actual yields will vary based on market conditions
+            - Current UK 10Y Gilt yields are around 4.2%
+            - Model caps gilt yields at 4.8% and corporate bonds at 5.5%
             """)
             
             col1, col2 = st.columns(2)
@@ -1872,10 +1883,12 @@ def main():
                 avg_sipp_yield = sipp_ladder['estimated_ytm'].mean()
                 current_gilt_yield = gilt_data['yield_10y'] * 100
                 
-                if avg_sipp_yield < current_gilt_yield - 0.5:
+                if avg_sipp_yield < current_gilt_yield - 0.2:
                     recommendations.append(f"📈 **Yield Opportunity**: Current gilt yields (~{current_gilt_yield:.1f}%) higher than strategy assumption")
-                elif avg_sipp_yield > current_gilt_yield + 0.5:
+                elif avg_sipp_yield > current_gilt_yield + 0.8:
                     recommendations.append(f"⚠️ **Yield Risk**: Strategy assumes higher yields than current market (~{current_gilt_yield:.1f}%)")
+                else:
+                    recommendations.append(f"✅ **Realistic Yield Assumptions**: Strategy yields (~{avg_sipp_yield:.1f}%) align reasonably with current market (~{current_gilt_yield:.1f}%)")
             
             for rec in recommendations:
                 if "✅" in rec:
