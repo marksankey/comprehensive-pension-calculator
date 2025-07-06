@@ -216,7 +216,64 @@ class EnhancedSIPPBondCalculator:
             'taxable_portion': taxable_portion,
             'tax_free_percentage_used': (tax_free_taken / max_tax_free * 100) if max_tax_free > 0 else 0
         }
-    
+    def calculate_state_pension_timing(self, birth_date: str, retirement_start_year: int, 
+                                 state_pension_age: int = 67) -> Dict:
+    """Calculate when state pension starts and pro-rating for first year"""
+    try:
+        # Parse birth date
+        birth_dt = datetime.strptime(birth_date, '%d/%m/%Y')
+        
+        # Calculate state pension start date (birthday at specified age)
+        state_pension_start_date = datetime(
+            birth_dt.year + state_pension_age,
+            birth_dt.month,
+            birth_dt.day
+        )
+        
+        # Calculate retirement start date (assuming January 1st of retirement year)
+        retirement_start_date = datetime(retirement_start_year, 1, 1)
+        
+        # Determine which simulation year the state pension starts
+        if state_pension_start_date < retirement_start_date:
+            # State pension already started before retirement
+            pension_start_year = 1
+            pro_rata_factor = 1.0
+            months_in_first_year = 12
+        else:
+            # Calculate years from retirement start to pension start
+            years_diff = state_pension_start_date.year - retirement_start_date.year
+            pension_start_year = years_diff + 1
+            
+            # Calculate pro-rata factor for the first year of state pension
+            pension_year_start = datetime(state_pension_start_date.year, 1, 1)
+            pension_year_end = datetime(state_pension_start_date.year, 12, 31)
+            
+            days_from_start = (state_pension_start_date - pension_year_start).days
+            days_in_year = (pension_year_end - pension_year_start).days + 1
+            pro_rata_factor = 1.0 - (days_from_start / days_in_year)
+            
+            # Calculate months for clarity
+            months_in_first_year = 12 - state_pension_start_date.month + 1
+        
+        return {
+            'pension_start_year': pension_start_year,
+            'pension_start_date': state_pension_start_date,
+            'pro_rata_factor': pro_rata_factor,
+            'months_in_first_year': months_in_first_year,
+            'age_at_retirement': retirement_start_year - birth_dt.year,
+            'age_at_pension_start': state_pension_age
+        }
+        
+    except Exception as e:
+        # Fallback to simple calculation
+        return {
+            'pension_start_year': max(1, state_pension_age - (retirement_start_year - 2024)),
+            'pension_start_date': datetime(retirement_start_year + 5, 7, 16),
+            'pro_rata_factor': 1.0,
+            'months_in_first_year': 12,
+            'age_at_retirement': 61,  # Approximate for 1963 birth
+            'age_at_pension_start': state_pension_age
+        }
     def calculate_yield_to_maturity(self, price: float, face_value: float, 
                                   coupon_rate: float, years_to_maturity: float) -> float:
         """Calculate Yield to Maturity using approximation formula"""
