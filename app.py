@@ -502,69 +502,68 @@ class EnhancedSIPPBondCalculator:
                 bonds_maturing_this_year = []
                 
                 # Check for maturing bonds and calculate income
+                # SIMPLIFIED: Bonds mature, pay income, principal gets reinvested at same face value
                 for idx, bond in sipp_ladder.iterrows():
                     if bond['maturity_year'] == current_year and bond['allocation'] > 0:
-                        # Bond matures - reinvest principal in new 5-year bond
+                        # Bond matures - principal gets reinvested in new 5-year bond at SAME face value
                         principal = bond['allocation']
-                        to_tax_free_bonds = principal * sipp_tax_free_ratio
-                        to_taxable_bonds = principal * sipp_taxable_ratio
                         
-                        remaining_sipp_tax_free_bonds += to_tax_free_bonds
-                        remaining_sipp_taxable_bonds += to_taxable_bonds
-                        
-                        # Reinvest in new bond maturing 5 years later
+                        # Reinvest in new bond maturing 5 years later - NO CHANGE to portfolio value
                         new_maturity_year = current_year + bond_ladder_years
                         sipp_ladder.loc[idx, 'maturity_year'] = new_maturity_year
                         sipp_ladder.loc[idx, 'maturity_date'] = f'{new_maturity_year}-06-30'
                         sipp_ladder.loc[idx, 'bond_name'] = f'Reinvested Bond {new_maturity_year}'
-                        # Keep same allocation - bond ladder continues
-                        # Update estimated yield for new maturity (yield curve effect)
+                        # allocation stays exactly the same - no change to portfolio value
+                        
+                        # Update yield for new bond but allocation unchanged
                         years_from_now = new_maturity_year - start_year
                         estimated_new_yield = 4.1 + (years_from_now - bond_ladder_years) * 0.1
                         sipp_ladder.loc[idx, 'estimated_ytm'] = max(2.0, estimated_new_yield)
                         sipp_ladder.loc[idx, 'annual_income'] = principal * (sipp_ladder.loc[idx, 'estimated_ytm'] / 100)
                         
+                        # Record maturity but NO CHANGE to remaining bond amounts
                         bonds_maturing_this_year.append({
                             'Type': 'SIPP',
                             'Bond': bond['bond_name'],
                             'ISIN': bond['isin'],
                             'Principal': principal,
                             'Year': current_year,
-                            'Action': f'Reinvested in {new_maturity_year} bond'
+                            'Action': f'Reinvested in {new_maturity_year} bond - no portfolio change'
                         })
                     
-                    # Bond income continues regardless of maturity (from current or new bonds)
+                    # Bond income continues regardless of maturity
                     if bond['allocation'] > 0:
                         sipp_bond_income += bond['annual_income']
                 
                 for idx, bond in isa_ladder.iterrows():
                     if bond['maturity_year'] == current_year and bond['allocation'] > 0:
-                        # Bond matures - reinvest principal in new bond
+                        # Bond matures - principal gets reinvested in new bond at SAME face value
                         principal = bond['allocation']
-                        remaining_isa_bonds += principal
                         
-                        # Reinvest in new bond maturing 5 years later
+                        # Reinvest in new bond maturing 5 years later - NO CHANGE to portfolio value
                         new_maturity_year = current_year + bond_ladder_years
                         isa_ladder.loc[idx, 'maturity_year'] = new_maturity_year
                         isa_ladder.loc[idx, 'maturity_date'] = f'{new_maturity_year}-06-30'
                         isa_ladder.loc[idx, 'bond_name'] = f'Reinvested Corporate {new_maturity_year}'
-                        # Keep same allocation - bond ladder continues
-                        # Update estimated yield for new maturity (corporate bonds typically higher yield)
+                        # allocation stays exactly the same - no change to portfolio value
+                        
+                        # Update yield for new bond but allocation unchanged
                         years_from_now = new_maturity_year - start_year
-                        estimated_new_yield = 5.0 + (years_from_now - bond_ladder_years) * 0.15  # Steeper curve for corporates
+                        estimated_new_yield = 5.0 + (years_from_now - bond_ladder_years) * 0.15
                         isa_ladder.loc[idx, 'estimated_ytm'] = max(3.0, estimated_new_yield)
                         isa_ladder.loc[idx, 'annual_income'] = principal * (isa_ladder.loc[idx, 'estimated_ytm'] / 100)
                         
+                        # Record maturity but NO CHANGE to remaining bond amounts
                         bonds_maturing_this_year.append({
                             'Type': 'ISA',
                             'Bond': bond['bond_name'],
                             'ISIN': bond['isin'],
                             'Principal': principal,
                             'Year': current_year,
-                            'Action': f'Reinvested in {new_maturity_year} corporate bond'
+                            'Action': f'Reinvested in {new_maturity_year} corporate bond - no portfolio change'
                         })
                     
-                    # Bond income continues regardless of maturity (from current or new bonds)
+                    # Bond income continues regardless of maturity
                     if bond['allocation'] > 0:
                         isa_bond_income += bond['annual_income']
                 
