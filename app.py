@@ -1241,7 +1241,7 @@ def main():
     # Pension inputs
     st.sidebar.subheader("🏛️ Defined Benefit Pensions")
     
-    db_pension = st.sidebar.number_input("DB Pension (£/year)", min_value=0, value=13000, step=500, key="db_pension_input")
+    db_pension = st.sidebar.number_input("DB Pension (£/year)", min_value=0, value=13500, step=500, key="db_pension_input")
     state_pension = st.sidebar.number_input("State Pension (£/year)", min_value=0, value=11500, step=100)
     state_pension_start_year = st.sidebar.slider("State Pension Start Year", min_value=1, max_value=20, value=5)
     
