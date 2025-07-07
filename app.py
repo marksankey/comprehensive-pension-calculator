@@ -1642,38 +1642,38 @@ def main():
             display_implementation_timeline()
             
             # Enhanced download section with comprehensive data
-st.subheader("📥 Download Complete Analysis")
+            st.subheader("📥 Download Complete Analysis")
 
-col1, col2, col3 = st.columns(3)
+            col1, col2, col3 = st.columns(3)
 
-with col1:
-    # Enhanced CSV download with all data
-    df = pd.DataFrame(annual_data)
-    csv_data = df.to_csv(index=False)
-    st.download_button(
-        label="📊 Download Complete CSV Data",
-        data=csv_data,
-        file_name=f"bond_strategy_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-        mime="text/csv",
-        help="Contains all yearly data including income, tax, and portfolio values"
-    )
+            with col1:
+            # Enhanced CSV download with all data
+            df = pd.DataFrame(annual_data)
+            csv_data = df.to_csv(index=False)
+            st.download_button(
+                label="📊 Download Complete CSV Data",
+                data=csv_data,
+                file_name=f"bond_strategy_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv",
+                help="Contains all yearly data including income, tax, and portfolio values"
+            )
 
-with col2:
-    # ENHANCED Excel with practical tools
-    excel_data = create_enhanced_excel_export_wrapper(
-        annual_data, sipp_ladder, isa_ladder, 
-        scenario_results=None, monte_carlo_results=None
-    )
-    if excel_data:
-        st.download_button(
-            label="🔧 Download Enhanced Excel Tools",
-            data=excel_data,
-            file_name=f"bond_strategy_tools_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Complete Excel toolkit: price tracker, purchase log, calculators, and risk dashboard"
-        )
-    else:
-        st.error("Failed to create enhanced Excel export")
+            with col2:
+                # ENHANCED Excel with practical tools
+                excel_data = create_enhanced_excel_export_wrapper(
+                    annual_data, sipp_ladder, isa_ladder, 
+                    scenario_results=None, monte_carlo_results=None
+                )
+                if excel_data:
+                    st.download_button(
+                        label="🔧 Download Enhanced Excel Tools",
+                        data=excel_data,
+                        file_name=f"bond_strategy_tools_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        help="Complete Excel toolkit: price tracker, purchase log, calculators, and risk dashboard"
+                    )
+                else:
+                    st.error("Failed to create enhanced Excel export")
 
 with col3:
     # Original Excel (keep as backup)
