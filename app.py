@@ -14,6 +14,9 @@ from io import BytesIO
 import yfinance as yf
 import requests
 
+# Add this import near the top with your other imports
+from excel_enhanced_export import create_enhanced_excel_export_wrapper
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
