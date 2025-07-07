@@ -1648,15 +1648,15 @@ def main():
 
             with col1:
             # Enhanced CSV download with all data
-            df = pd.DataFrame(annual_data)
-            csv_data = df.to_csv(index=False)
-            st.download_button(
-                label="📊 Download Complete CSV Data",
-                data=csv_data,
-                file_name=f"bond_strategy_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
-                help="Contains all yearly data including income, tax, and portfolio values"
-            )
+                df = pd.DataFrame(annual_data)
+                csv_data = df.to_csv(index=False)
+                st.download_button(
+                    label="📊 Download Complete CSV Data",
+                    data=csv_data,
+                    file_name=f"bond_strategy_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                    help="Contains all yearly data including income, tax, and portfolio values"
+                )
 
             with col2:
                 # ENHANCED Excel with practical tools
