@@ -1675,17 +1675,17 @@ def main():
                 else:
                     st.error("Failed to create enhanced Excel export")
 
-with col3:
-    # Original Excel (keep as backup)
-    excel_data_original = create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder)
-    if excel_data_original:
-        st.download_button(
-            label="📈 Download Original Excel Report",
-            data=excel_data_original,
-            file_name=f"original_bond_strategy_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Original multi-sheet Excel with analysis and projections"
-        )
+            with col3:
+                # Original Excel (keep as backup)
+                excel_data_original = create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder)
+                if excel_data_original:
+                    st.download_button(
+                        label="📈 Download Original Excel Report",
+                        data=excel_data_original,
+                        file_name=f"original_bond_strategy_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        help="Original multi-sheet Excel with analysis and projections"
+                    )
             
             with col3:
                 # Summary JSON for configuration backup
