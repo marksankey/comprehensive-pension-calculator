@@ -14,7 +14,7 @@ from io import BytesIO
 import yfinance as yf
 import requests
 
-# Add this import near the top with your other imports
+# Add the enhanced Excel export import
 from excel_enhanced_export import create_enhanced_excel_export_wrapper
 
 # Configure logging
@@ -1431,6 +1431,57 @@ def create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder, scenario_
         return None
 
 
+def run_scenario_analysis(base_params, calc):
+    """Run multiple economic scenarios"""
+    scenarios = {
+        'Optimistic 📈': {
+            'inflation_rate': 2.0,
+            'investment_growth': 6.0,
+            'description': 'Strong growth, low inflation, higher yields'
+        },
+        'Base Case 📊': {
+            'inflation_rate': base_params['inflation_rate'],
+            'investment_growth': base_params['investment_growth'],
+            'description': 'Current assumptions maintained'
+        },
+        'Pessimistic 📉': {
+            'inflation_rate': 4.0,
+            'investment_growth': 1.0,
+            'description': 'Low growth, high inflation, lower yields'
+        },
+        'High Inflation 🔥': {
+            'inflation_rate': 6.0,
+            'investment_growth': 2.0,
+            'description': 'Persistent high inflation, higher nominal yields'
+        }
+    }
+    
+    scenario_results = {}
+    
+    for scenario_name, scenario_params in scenarios.items():
+        try:
+            # Create modified parameters
+            modified_params = base_params.copy()
+            modified_params.update(scenario_params)
+            
+            # Run simulation
+            annual_data, _, _ = calc.simulate_comprehensive_strategy(modified_params)
+            
+            if annual_data:
+                scenario_results[scenario_name] = {
+                    'annual_data': annual_data,
+                    'description': scenario_params['description'],
+                    'final_pot': annual_data[-1]['total_remaining_pots'],
+                    'avg_net_income': np.mean([year['total_net_income'] for year in annual_data]),
+                    'avg_tax_rate': np.mean([year['effective_tax_rate'] for year in annual_data])
+                }
+        except Exception as e:
+            st.warning(f"Scenario {scenario_name} failed: {str(e)}")
+            continue
+    
+    return scenario_results
+
+
 def main():
     st.title("💰 Enhanced SIPP Bond Strategy Calculator")
     st.markdown("**Professional UK retirement planning with specific bond recommendations**")
@@ -1643,11 +1694,11 @@ def main():
             
             # Enhanced download section with comprehensive data
             st.subheader("📥 Download Complete Analysis")
-
+            
             col1, col2, col3 = st.columns(3)
-
+            
             with col1:
-            # Enhanced CSV download with all data
+                # Enhanced CSV download with all data
                 df = pd.DataFrame(annual_data)
                 csv_data = df.to_csv(index=False)
                 st.download_button(
@@ -1657,7 +1708,7 @@ def main():
                     mime="text/csv",
                     help="Contains all yearly data including income, tax, and portfolio values"
                 )
-
+            
             with col2:
                 # ENHANCED Excel with practical tools
                 excel_data = create_enhanced_excel_export_wrapper(
@@ -1674,7 +1725,7 @@ def main():
                     )
                 else:
                     st.error("Failed to create enhanced Excel export")
-
+            
             with col3:
                 # Original Excel (keep as backup)
                 excel_data_original = create_enhanced_excel_export(annual_data, sipp_ladder, isa_ladder)
@@ -1687,35 +1738,19 @@ def main():
                         help="Original multi-sheet Excel with analysis and projections"
                     )
             
-            with col3:
-                # Summary JSON for configuration backup
-                summary_config = {
-                    'analysis_date': datetime.now().isoformat(),
-                    'parameters': {
-                        'sipp_value': sipp_value,
-                        'isa_value': isa_value,
-                        'target_income': target_annual_income,
-                        'bond_ladder_years': bond_ladder_years,
-                        'sipp_strategy': sipp_strategy,
-                        'inflation_rate': inflation_rate,
-                        'investment_growth': investment_growth
-                    },
-                    'key_results': {
-                        'year_1_net_income': first_year['total_net_income'],
-                        'average_tax_rate': np.mean([year['effective_tax_rate'] for year in annual_data]),
-                        'final_portfolio_value': last_year['total_remaining_pots'],
-                        'total_bond_income': sum([year['sipp_bond_income'] + year['isa_bond_income'] for year in annual_data]),
-                        'strategy_sustainable': last_year['total_remaining_pots'] > 50000
-                    }
-                }
-                config_json = json.dumps(summary_config, indent=2, default=str)
-                st.download_button(
-                    label="⚙️ Download Strategy Config",
-                    data=config_json,
-                    file_name=f"bond_strategy_config_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-                    mime="application/json",
-                    help="Configuration backup for recreating this analysis"
-                )
+            # Add information about the enhanced Excel tools
+            st.info("""
+            **🔧 Enhanced Excel Tools Include:**
+            - **Bond Price Tracker** - Daily price monitoring with automatic YTM calculations
+            - **Purchase Log** - Record actual purchases with cost tracking
+            - **Quick Calculator** - Bond yield and comparison tools
+            - **Portfolio Summary** - Real-time dashboard with key metrics
+            - **Risk Dashboard** - Monitor concentration and credit risk
+            - **Implementation Checklist** - Step-by-step guide with progress tracking
+
+            **💡 Usage:** Start with the Bond Price Tracker sheet for daily monitoring. 
+            The formulas automatically calculate yields when you enter current prices.
+            """)
             
             # Comprehensive year-by-year analysis table
             st.subheader("📅 Detailed Year-by-Year Analysis")
@@ -2141,7 +2176,7 @@ def main():
                 - Keep adequate cash buffer
                 - Use major issuers for better liquidity
                 """)
-            
+        
         except Exception as e:
             st.error(f"Error running enhanced bond calculation: {str(e)}")
             logging.error(f"Enhanced bond calculation failed: {traceback.format_exc()}")
@@ -2219,6 +2254,91 @@ def main():
             - Risk management guidance
             - Ongoing monitoring strategies
             """)
+
+    # Add scenario analysis section with enhanced Excel export
+    st.subheader("🔬 Advanced Analysis")
+    
+    if st.button("Run Scenario Analysis"):
+        st.write("### Multi-Scenario Stress Testing")
+        
+        # Prepare base parameters for scenario analysis
+        db_pensions = {'DB Pension': db_pension}
+        base_params = {
+            'sipp_value': sipp_value,
+            'isa_value': isa_value,
+            'target_annual_income': target_annual_income,
+            'sipp_strategy': sipp_strategy,
+            'upfront_tax_free_percent': upfront_tax_free_percent,
+            'bond_ladder_years': bond_ladder_years,
+            'cash_buffer_percent': cash_buffer_percent,
+            'db_pensions': db_pensions,
+            'state_pension': state_pension,
+            'birth_date': birth_date,
+            'state_pension_age': state_pension_age,
+            'inflation_rate': inflation_rate,
+            'investment_growth': investment_growth,
+            'max_withdrawal_rate': max_withdrawal_rate,
+            'years': years,
+            'start_year': 2027
+        }
+        
+        scenario_results = run_scenario_analysis(base_params, calc)
+        
+        if scenario_results:
+            st.write("#### Scenario Summaries")
+            summary_df_data = []
+            for scenario, res in scenario_results.items():
+                summary_df_data.append({
+                    'Scenario': scenario,
+                    'Description': res['description'],
+                    'Final Pot Value': f"£{res['final_pot']:,.0f}",
+                    'Avg. Net Income': f"£{res['avg_net_income']:,.0f}",
+                    'Avg. Tax Rate': f"{res['avg_tax_rate']:.1f}%"
+                })
+            st.dataframe(pd.DataFrame(summary_df_data).set_index('Scenario'))
+            
+            st.write("#### Net Income Across Scenarios")
+            fig_scenario = go.Figure()
+            colors = px.colors.qualitative.Plotly
+            
+            for i, (scenario, res) in enumerate(scenario_results.items()):
+                df_scenario = pd.DataFrame(res['annual_data'])
+                fig_scenario.add_trace(go.Scatter(
+                    x=df_scenario['calendar_year'], 
+                    y=df_scenario['total_net_income'], 
+                    mode='lines+markers', 
+                    name=scenario,
+                    line=dict(color=colors[i], width=3)
+                ))
+            
+            fig_scenario.update_layout(
+                title='Multi-Scenario Net Income Projection',
+                xaxis_title='Year',
+                yaxis_title='Net Income (£)',
+                height=400
+            )
+            st.plotly_chart(fig_scenario, use_container_width=True)
+            
+            # Add enhanced Excel export with scenarios
+            st.subheader("📥 Download Scenario Analysis")
+            excel_with_scenarios = create_enhanced_excel_export_wrapper(
+                annual_data if 'annual_data' in locals() else [], 
+                sipp_ladder if 'sipp_ladder' in locals() else pd.DataFrame(), 
+                isa_ladder if 'isa_ladder' in locals() else pd.DataFrame(), 
+                scenario_results=scenario_results, 
+                monte_carlo_results=None
+            )
+            if excel_with_scenarios:
+                st.download_button(
+                    label="📊 Download Excel with Scenarios",
+                    data=excel_with_scenarios,
+                    file_name=f"bond_strategy_scenarios_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    help="Enhanced Excel tools plus scenario analysis"
+                )
+            
+        else:
+            st.info("No scenario analysis results to display.")
 
 
 if __name__ == "__main__":
