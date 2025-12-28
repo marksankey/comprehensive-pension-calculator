@@ -1555,19 +1555,19 @@ def main():
     
     # Portfolio values
     sipp_value = st.sidebar.number_input(
-        "SIPP Value (£)", 
-        min_value=0, 
-        value=565000, 
+        "SIPP Value (£)",
+        min_value=0,
+        value=565000,
         step=1000,
-        help="Current value of your Self-Invested Personal Pension"
+        help="Total value of all your SIPP investments combined"
     )
     
     isa_value = st.sidebar.number_input(
-        "ISA Value (£)", 
-        min_value=0, 
-        value=92000, 
+        "ISA Value (£)",
+        min_value=0,
+        value=92000,
         step=1000,
-        help="Current value of your Individual Savings Account"
+        help="Total value of all your ISA investments combined"
     )
     
     # Target income
