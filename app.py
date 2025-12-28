@@ -1482,6 +1482,87 @@ def run_scenario_analysis(base_params, calc):
     return scenario_results
 
 
+def run_monte_carlo_simulation(base_params, calc, num_simulations=500):
+    """Run Monte Carlo simulation with variable returns"""
+    results = []
+
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    for i in range(num_simulations):
+        try:
+            # Add random variation to key parameters
+            sim_params = base_params.copy()
+
+            # Add realistic random variations
+            sim_params['investment_growth'] += np.random.normal(0, 2.0)  # ±2% std dev
+            sim_params['inflation_rate'] += np.random.normal(0, 1.0)    # ±1% std dev
+
+            # Ensure parameters stay within reasonable bounds
+            sim_params['investment_growth'] = max(0, min(15, sim_params['investment_growth']))
+            sim_params['inflation_rate'] = max(0, min(10, sim_params['inflation_rate']))
+
+            # Run simulation
+            annual_data, _, _ = calc.simulate_comprehensive_strategy(sim_params)
+
+            if annual_data and len(annual_data) > 0:
+                final_pot = annual_data[-1]['total_remaining_pots']
+                avg_income = np.mean([year['total_net_income'] for year in annual_data])
+                avg_tax_rate = np.mean([year['effective_tax_rate'] for year in annual_data])
+                income_shortfall_years = len([y for y in annual_data if y['income_vs_target'] < -1000])
+
+                results.append({
+                    'final_pot': final_pot,
+                    'avg_income': avg_income,
+                    'avg_tax_rate': avg_tax_rate,
+                    'income_shortfall_years': income_shortfall_years,
+                    'pot_depleted': final_pot < 10000
+                })
+
+            # Update progress
+            progress = (i + 1) / num_simulations
+            progress_bar.progress(progress)
+            status_text.text(f'Running simulation {i+1}/{num_simulations}...')
+
+        except Exception as e:
+            continue
+
+    progress_bar.empty()
+    status_text.empty()
+
+    return results
+
+
+def validate_inputs(sipp_value, isa_value, target_annual_income, years):
+    """Enhanced input validation with helpful feedback"""
+    errors = []
+    warnings = []
+
+    # Error conditions
+    if target_annual_income <= 0:
+        errors.append("❌ Target annual income must be greater than zero")
+
+    if years <= 0:
+        errors.append("❌ Number of years must be greater than zero")
+
+    if sipp_value < 0 or isa_value < 0:
+        errors.append("❌ Portfolio values cannot be negative")
+
+    # Warning conditions
+    total_portfolio = sipp_value + isa_value
+
+    if total_portfolio < target_annual_income * 10:
+        warnings.append("⚠️ Your total portfolio is less than 10x your target income - this may not be sustainable")
+
+    if target_annual_income > total_portfolio * 0.06:
+        warnings.append("⚠️ Target income is more than 6% of portfolio - consider reducing target or increasing savings")
+
+    if sipp_value > 1073100:  # 2025/26 annual allowance limit
+        warnings.append("⚠️ SIPP value exceeds typical annual allowance limits - ensure this is accurate")
+
+    return errors, warnings
+
+
 def main():
     st.title("💰 Enhanced SIPP Bond Strategy Calculator")
     st.markdown("**Professional UK retirement planning with specific bond recommendations**")
@@ -2339,6 +2420,166 @@ def main():
             
         else:
             st.info("No scenario analysis results to display.")
+
+    # Monte Carlo Simulation Section
+    st.subheader("🎲 Monte Carlo Simulation")
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown("Run multiple simulations with random variations to assess probability of success")
+    with col2:
+        num_simulations = st.number_input("Simulations", min_value=100, max_value=1000, value=500, step=100)
+
+    if st.button("Run Monte Carlo Analysis"):
+        # Prepare base parameters
+        db_pensions = {'DB Pension': db_pension}
+        base_params = {
+            'sipp_value': sipp_value,
+            'isa_value': isa_value,
+            'target_annual_income': target_annual_income,
+            'sipp_strategy': sipp_strategy,
+            'upfront_tax_free_percent': upfront_tax_free_percent,
+            'bond_ladder_years': bond_ladder_years,
+            'cash_buffer_percent': cash_buffer_percent,
+            'db_pensions': db_pensions,
+            'state_pension': state_pension,
+            'birth_date': birth_date,
+            'state_pension_age': state_pension_age,
+            'inflation_rate': inflation_rate,
+            'investment_growth': investment_growth,
+            'max_withdrawal_rate': max_withdrawal_rate,
+            'years': years,
+            'start_year': 2027
+        }
+
+        with st.spinner(f"Running {num_simulations} simulations..."):
+            mc_results = run_monte_carlo_simulation(base_params, calc, num_simulations)
+
+        if mc_results:
+            st.success(f"✅ Completed {len(mc_results)} successful simulations")
+
+            # Summary statistics
+            df_mc = pd.DataFrame(mc_results)
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Success Rate", f"{(1 - df_mc['pot_depleted'].mean()) * 100:.1f}%")
+            with col2:
+                st.metric("Median Final Pot", f"£{df_mc['final_pot'].median():,.0f}")
+            with col3:
+                st.metric("Avg Income", f"£{df_mc['avg_income'].mean():,.0f}")
+            with col4:
+                st.metric("Avg Tax Rate", f"{df_mc['avg_tax_rate'].mean():.1f}%")
+
+            # Distribution charts
+            st.write("#### Final Portfolio Value Distribution")
+            fig_dist = px.histogram(
+                df_mc,
+                x='final_pot',
+                nbins=50,
+                title='Distribution of Final Portfolio Values',
+                labels={'final_pot': 'Final Portfolio Value (£)'}
+            )
+            fig_dist.add_vline(x=df_mc['final_pot'].median(), line_dash="dash", line_color="red",
+                              annotation_text=f"Median: £{df_mc['final_pot'].median():,.0f}")
+            st.plotly_chart(fig_dist, use_container_width=True)
+
+            # Percentile analysis
+            st.write("#### Outcome Percentiles")
+            percentiles = [10, 25, 50, 75, 90]
+            percentile_data = []
+            for p in percentiles:
+                percentile_data.append({
+                    'Percentile': f"{p}th",
+                    'Final Pot Value': f"£{df_mc['final_pot'].quantile(p/100):,.0f}",
+                    'Avg Income': f"£{df_mc['avg_income'].quantile(p/100):,.0f}",
+                    'Shortfall Years': f"{df_mc['income_shortfall_years'].quantile(p/100):.0f}"
+                })
+            st.dataframe(pd.DataFrame(percentile_data).set_index('Percentile'))
+
+            # Download Monte Carlo results
+            st.subheader("📥 Download Monte Carlo Results")
+            csv_mc = df_mc.to_csv(index=False)
+            st.download_button(
+                label="📊 Download Monte Carlo CSV",
+                data=csv_mc,
+                file_name=f"monte_carlo_results_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.error("Monte Carlo simulation failed to generate results")
+
+    # Year-by-Year Details Section
+    if 'annual_data' in locals() and annual_data:
+        st.subheader("📅 Year-by-Year Withdrawal Details")
+
+        with st.expander("View Detailed Annual Breakdown", expanded=False):
+            df_annual = pd.DataFrame(annual_data)
+
+            # Format the dataframe for display
+            display_cols = {
+                'calendar_year': 'Year',
+                'total_net_income': 'Net Income',
+                'sipp_tax_free_withdrawal': 'SIPP Tax-Free',
+                'isa_withdrawal': 'ISA Withdrawal',
+                'sipp_taxable_withdrawal': 'SIPP Taxable',
+                'total_tax': 'Tax Paid',
+                'effective_tax_rate': 'Tax Rate %',
+                'total_remaining_pots': 'Portfolio Value'
+            }
+
+            # Select and rename columns
+            df_display = df_annual[[col for col in display_cols.keys() if col in df_annual.columns]].copy()
+            df_display.columns = [display_cols[col] for col in df_display.columns]
+
+            # Format currency columns
+            currency_cols = ['Net Income', 'SIPP Tax-Free', 'ISA Withdrawal', 'SIPP Taxable', 'Tax Paid', 'Portfolio Value']
+            for col in currency_cols:
+                if col in df_display.columns:
+                    df_display[col] = df_display[col].apply(lambda x: f"£{x:,.0f}")
+
+            # Format percentage
+            if 'Tax Rate %' in df_display.columns:
+                df_display['Tax Rate %'] = df_display['Tax Rate %'].apply(lambda x: f"{x:.1f}%")
+
+            st.dataframe(df_display, use_container_width=True, height=400)
+
+            # Interactive withdrawal composition chart
+            st.write("#### Withdrawal Composition Over Time")
+            fig_withdrawals = go.Figure()
+
+            if 'sipp_tax_free_withdrawal' in df_annual.columns:
+                fig_withdrawals.add_trace(go.Bar(
+                    name='SIPP Tax-Free',
+                    x=df_annual['calendar_year'],
+                    y=df_annual['sipp_tax_free_withdrawal'],
+                    marker_color='green'
+                ))
+
+            if 'isa_withdrawal' in df_annual.columns:
+                fig_withdrawals.add_trace(go.Bar(
+                    name='ISA',
+                    x=df_annual['calendar_year'],
+                    y=df_annual['isa_withdrawal'],
+                    marker_color='blue'
+                ))
+
+            if 'sipp_taxable_withdrawal' in df_annual.columns:
+                fig_withdrawals.add_trace(go.Bar(
+                    name='SIPP Taxable',
+                    x=df_annual['calendar_year'],
+                    y=df_annual['sipp_taxable_withdrawal'],
+                    marker_color='orange'
+                ))
+
+            fig_withdrawals.update_layout(
+                barmode='stack',
+                title='Annual Withdrawal Sources',
+                xaxis_title='Year',
+                yaxis_title='Amount (£)',
+                height=400
+            )
+            st.plotly_chart(fig_withdrawals, use_container_width=True)
 
 
 if __name__ == "__main__":
