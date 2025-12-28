@@ -1563,7 +1563,197 @@ def validate_inputs(sipp_value, isa_value, target_annual_income, years):
     return errors, warnings
 
 
+def show_input_screen():
+    """Display the input parameter screen"""
+    st.title("💰 Enhanced SIPP Bond Strategy Calculator")
+    st.markdown("**Professional UK retirement planning with specific bond recommendations**")
+
+    # Display current market data
+    gilt_data = get_current_gilt_yields()
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("UK 10Y Gilt", f"{gilt_data['yield_10y']*100:.2f}%")
+    with col2:
+        st.metric("UK 5Y Gilt", f"{gilt_data['yield_5y']*100:.2f}%")
+    with col3:
+        st.metric("UK 2Y Gilt", f"{gilt_data['yield_2y']*100:.2f}%")
+    with col4:
+        st.metric("Curve Shape", gilt_data.get('curve_shape', 'Normal'))
+
+    st.markdown("---")
+    st.header("📋 Input Parameters")
+
+    # Create tabs for organized input
+    tab1, tab2, tab3, tab4 = st.tabs(["💼 Portfolio", "🎯 Strategy", "🏛️ Pensions", "📈 Assumptions"])
+
+    with tab1:
+        st.subheader("Portfolio Values")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            sipp_value = st.number_input(
+                "SIPP Value (£)",
+                min_value=0,
+                value=st.session_state.get('sipp_value', 565000),
+                step=1000,
+                help="Total value of all your SIPP investments combined",
+                key="input_sipp_value"
+            )
+
+        with col2:
+            isa_value = st.number_input(
+                "ISA Value (£)",
+                min_value=0,
+                value=st.session_state.get('isa_value', 92000),
+                step=1000,
+                help="Total value of all your ISA investments combined",
+                key="input_isa_value"
+            )
+
+        target_annual_income = st.number_input(
+            "Target Annual Net Income (£)",
+            min_value=0,
+            value=st.session_state.get('target_annual_income', 40000),
+            step=1000,
+            help="Desired annual net income (after tax)",
+            key="input_target_income"
+        )
+
+    with tab2:
+        st.subheader("SIPP Strategy")
+        sipp_strategy, upfront_tax_free_percent = add_sipp_strategy_selection()
+
+        st.subheader("Bond Ladder Settings")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            bond_ladder_years = st.slider(
+                "Ladder Duration (Years)",
+                min_value=3,
+                max_value=10,
+                value=st.session_state.get('bond_ladder_years', 5),
+                help="Number of years in your bond ladder",
+                key="input_ladder_years"
+            )
+
+        with col2:
+            cash_buffer_percent = st.slider(
+                "Cash Buffer (%)",
+                min_value=0,
+                max_value=20,
+                value=st.session_state.get('cash_buffer_percent', 5),
+                help="Percentage to keep in cash for flexibility",
+                key="input_cash_buffer"
+            )
+
+    with tab3:
+        st.subheader("Defined Benefit Pensions")
+        db_pension = st.number_input(
+            "DB Pension (£/year)",
+            min_value=0,
+            value=st.session_state.get('db_pension', 13500),
+            step=500,
+            key="input_db_pension"
+        )
+
+        st.subheader("State Pension")
+        birth_date, state_pension_age, state_pension = add_birth_date_state_pension()
+
+    with tab4:
+        st.subheader("Economic Assumptions")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            inflation_rate = st.slider(
+                "Inflation Rate (%)",
+                min_value=0.0,
+                max_value=10.0,
+                value=st.session_state.get('inflation_rate', 2.5),
+                step=0.1,
+                key="input_inflation"
+            )
+
+            investment_growth = st.slider(
+                "Investment Growth (%)",
+                min_value=0.0,
+                max_value=15.0,
+                value=st.session_state.get('investment_growth', 4.0),
+                step=0.1,
+                key="input_growth"
+            )
+
+        with col2:
+            max_withdrawal_rate = st.slider(
+                "Max Withdrawal Rate (%)",
+                min_value=1.0,
+                max_value=10.0,
+                value=st.session_state.get('max_withdrawal_rate', 4.0),
+                step=0.1,
+                key="input_withdrawal"
+            )
+
+            years = st.slider(
+                "Simulation Years",
+                min_value=5,
+                max_value=40,
+                value=st.session_state.get('years', 25),
+                key="input_years"
+            )
+
+    st.markdown("---")
+
+    # Validation
+    errors, warnings = validate_inputs(sipp_value, isa_value, target_annual_income, years)
+
+    if errors:
+        for error in errors:
+            st.error(error)
+
+    if warnings:
+        for warning in warnings:
+            st.warning(warning)
+
+    # Calculate button
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🚀 Calculate Enhanced Bond Strategy", type="primary", use_container_width=True, disabled=len(errors) > 0):
+            # Store all inputs in session state
+            st.session_state.sipp_value = sipp_value
+            st.session_state.isa_value = isa_value
+            st.session_state.target_annual_income = target_annual_income
+            st.session_state.sipp_strategy = sipp_strategy
+            st.session_state.upfront_tax_free_percent = upfront_tax_free_percent
+            st.session_state.bond_ladder_years = bond_ladder_years
+            st.session_state.cash_buffer_percent = cash_buffer_percent
+            st.session_state.db_pension = db_pension
+            st.session_state.birth_date = birth_date
+            st.session_state.state_pension_age = state_pension_age
+            st.session_state.state_pension = state_pension
+            st.session_state.inflation_rate = inflation_rate
+            st.session_state.investment_growth = investment_growth
+            st.session_state.max_withdrawal_rate = max_withdrawal_rate
+            st.session_state.years = years
+
+            # Switch to results screen
+            st.session_state.screen = 'results'
+            st.rerun()
+
+
 def main():
+    # Initialize session state
+    if 'screen' not in st.session_state:
+        st.session_state.screen = 'input'
+
+    # Show appropriate screen
+    if st.session_state.screen == 'input':
+        show_input_screen()
+    else:
+        show_results_screen()
+
+
+def show_results_screen():
+    """Display the results screen with Edit Inputs button"""
     st.title("💰 Enhanced SIPP Bond Strategy Calculator")
     st.markdown("**Professional UK retirement planning with specific bond recommendations**")
     
