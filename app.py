@@ -388,9 +388,24 @@ class EnhancedSIPPBondCalculator:
         # Ensure realistic bounds for UK bonds (0.5% to 8%)
         return max(0.5, min(8.0, ytm))
     
-    def get_bond_recommendations(self, allocation_per_year: float, ladder_years: int, 
-                               account_type: str, start_year: int = 2027) -> pd.DataFrame:
-        """Get specific bond recommendations for the ladder with realistic pricing"""
+    def get_bond_recommendations(self, allocation_per_year: float, ladder_years: int,
+                               account_type: str, start_year: int = 2027,
+                               purchase_date = None) -> pd.DataFrame:
+        """Get specific bond recommendations for the ladder with realistic pricing
+
+        Args:
+            allocation_per_year: Amount to allocate to each year's bond
+            ladder_years: Number of years in the bond ladder
+            account_type: 'SIPP' or 'ISA'
+            start_year: Retirement start year
+            purchase_date: Date when bonds will be purchased (for accurate pricing)
+        """
+        # Default purchase date to 6 months before retirement start
+        if purchase_date is None:
+            purchase_date = datetime(start_year - 1, 7, 1)
+        elif isinstance(purchase_date, str):
+            purchase_date = datetime.strptime(purchase_date, '%Y-%m-%d')
+
         recommendations = []
         
         # Select appropriate bond universe and set realistic yield targets
@@ -411,10 +426,13 @@ class EnhancedSIPPBondCalculator:
             suitable_bonds = []
             for bond_name, bond_info in bond_universe.items():
                 maturity_year = int(bond_info['maturity_date'].split('-')[0])
-                
+
                 # Allow ±1 year flexibility for matching
                 if abs(maturity_year - target_year) <= 1:
-                    years_to_maturity = max(0.5, maturity_year - start_year + 1)
+                    # Calculate precise years to maturity from purchase date
+                    maturity_date = datetime.strptime(bond_info['maturity_date'], '%Y-%m-%d')
+                    years_to_maturity = (maturity_date - purchase_date).days / 365.25
+                    years_to_maturity = max(0.1, years_to_maturity)  # Minimum 0.1 years
                     
                     # Use minimum YTM from bond info, or calculated target
                     min_ytm = bond_info.get('min_ytm', target_ytm)
@@ -518,14 +536,15 @@ class EnhancedSIPPBondCalculator:
         
         return pd.DataFrame(recommendations)
     
-    def create_bond_ladder_with_recommendations(self, total_investment: float, ladder_years: int, 
-                                              account_type: str, start_year: int = 2027) -> pd.DataFrame:
+    def create_bond_ladder_with_recommendations(self, total_investment: float, ladder_years: int,
+                                              account_type: str, start_year: int = 2027,
+                                              purchase_date = None) -> pd.DataFrame:
         """Create a bond ladder with specific bond recommendations"""
         if total_investment <= 0 or ladder_years <= 0:
             return pd.DataFrame()
-        
+
         allocation_per_year = total_investment / ladder_years
-        return self.get_bond_recommendations(allocation_per_year, ladder_years, account_type, start_year)
+        return self.get_bond_recommendations(allocation_per_year, ladder_years, account_type, start_year, purchase_date)
     
     def optimize_withdrawal_order(self, target_net_income: float, available_sources: Dict, 
                                 additional_taxable_income: float, personal_allowance: float) -> Dict:
@@ -622,6 +641,7 @@ class EnhancedSIPPBondCalculator:
             # Bond ladder parameters
             bond_ladder_years = params['bond_ladder_years']
             cash_buffer_percent = params.get('cash_buffer_percent', 5)
+            bond_purchase_date = params.get('bond_purchase_date', None)
             
             # Calculate SIPP components - FIXED 25% calculation
             sipp_analysis = self.calculate_sipp_tax_free_available(sipp_value)
@@ -656,10 +676,10 @@ class EnhancedSIPPBondCalculator:
             
             # Create bond ladders with specific recommendations
             sipp_ladder = self.create_bond_ladder_with_recommendations(
-                sipp_bonds_total, bond_ladder_years, 'SIPP', start_year
+                sipp_bonds_total, bond_ladder_years, 'SIPP', start_year, bond_purchase_date
             )
             isa_ladder = self.create_bond_ladder_with_recommendations(
-                isa_bonds_total, bond_ladder_years, 'ISA', start_year
+                isa_bonds_total, bond_ladder_years, 'ISA', start_year, bond_purchase_date
             )
             
             # Calculate initial allocations - both tax-free and taxable portions are invested
@@ -1675,13 +1695,36 @@ def main():
     )
     
     cash_buffer_percent = st.sidebar.slider(
-        "Cash Buffer (%)", 
-        min_value=0, 
-        max_value=20, 
+        "Cash Buffer (%)",
+        min_value=0,
+        max_value=20,
         value=5,
         help="Percentage to keep in cash for flexibility"
     )
-    
+
+    # Retirement timing
+    st.sidebar.subheader("📅 Retirement Timing")
+
+    retirement_start_year = st.sidebar.number_input(
+        "Retirement Start Year",
+        min_value=2025,
+        max_value=2040,
+        value=2027,
+        step=1,
+        help="Year your retirement begins (January 1st)"
+    )
+
+    # Calculate default purchase date (6 months before retirement)
+    default_purchase_date = datetime(retirement_start_year - 1, 7, 1)
+
+    bond_purchase_date = st.sidebar.date_input(
+        "Bond Purchase Date",
+        value=default_purchase_date,
+        min_value=datetime(2024, 1, 1),
+        max_value=datetime(retirement_start_year, 12, 31),
+        help="Estimated date when you'll purchase bonds (affects pricing calculations)"
+    )
+
     # Pension inputs
     st.sidebar.subheader("🏛️ Defined Benefit Pensions")
     
@@ -1721,7 +1764,8 @@ def main():
                 'investment_growth': investment_growth,
                 'max_withdrawal_rate': max_withdrawal_rate,
                 'years': years,
-                'start_year': 2027
+                'start_year': retirement_start_year,
+                'bond_purchase_date': bond_purchase_date
             }
             
             # Run simulation
@@ -2360,7 +2404,8 @@ def main():
             'investment_growth': investment_growth,
             'max_withdrawal_rate': max_withdrawal_rate,
             'years': years,
-            'start_year': 2027
+            'start_year': retirement_start_year,
+            'bond_purchase_date': bond_purchase_date
         }
         
         scenario_results = run_scenario_analysis(base_params, calc)
@@ -2449,7 +2494,8 @@ def main():
             'investment_growth': investment_growth,
             'max_withdrawal_rate': max_withdrawal_rate,
             'years': years,
-            'start_year': 2027
+            'start_year': retirement_start_year,
+            'bond_purchase_date': bond_purchase_date
         }
 
         with st.spinner(f"Running {num_simulations} simulations..."):
