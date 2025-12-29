@@ -661,6 +661,10 @@ class EnhancedSIPPBondCalculator:
             isa_ladder = self.create_bond_ladder_with_recommendations(
                 isa_bonds_total, bond_ladder_years, 'ISA', start_year
             )
+
+            # Preserve initial bond recommendations for display (before simulation reinvestments)
+            initial_sipp_ladder = sipp_ladder.copy()
+            initial_isa_ladder = isa_ladder.copy()
             
             # Calculate initial allocations - both tax-free and taxable portions are invested
             sipp_tax_free_ratio = remaining_sipp_tax_free / total_sipp_for_allocation if total_sipp_for_allocation > 0 else 0
@@ -988,7 +992,8 @@ class EnhancedSIPPBondCalculator:
                     'max_withdrawal_applied': total_planned_withdrawal > max_allowed_withdrawal if additional_net_needed > 0 else False
                 })
             
-            return annual_data, sipp_ladder, isa_ladder
+            # Return initial bond ladders (not the reinvested ones from simulation)
+            return annual_data, initial_sipp_ladder, initial_isa_ladder
             
         except Exception as e:
             logging.error(f"Simulation failed: {traceback.format_exc()}")
@@ -1075,7 +1080,12 @@ def add_birth_date_state_pension():
 def display_bond_recommendations(sipp_ladder, isa_ladder):
     """Display specific bond recommendations with purchase instructions"""
     st.subheader("🔗 Specific Bond Recommendations")
-    
+    st.info("""
+    **Initial Bond Ladder Setup**: These are the bonds to purchase NOW to create your bond ladder.
+    Each bond matures in a different year, providing regular income. When bonds mature during your
+    retirement, they can be reinvested to maintain the ladder structure.
+    """)
+
     col1, col2 = st.columns(2)
     
     with col1:
