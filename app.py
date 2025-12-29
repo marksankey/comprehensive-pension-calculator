@@ -405,6 +405,9 @@ class EnhancedSIPPBondCalculator:
             purchase_date = datetime(start_year - 1, 7, 1)
         elif isinstance(purchase_date, str):
             purchase_date = datetime.strptime(purchase_date, '%Y-%m-%d')
+        elif hasattr(purchase_date, 'year') and not isinstance(purchase_date, datetime):
+            # Convert date to datetime (e.g., from st.date_input)
+            purchase_date = datetime.combine(purchase_date, datetime.min.time())
 
         recommendations = []
         
@@ -1074,7 +1077,7 @@ def add_birth_date_state_pension():
     state_pension = st.sidebar.number_input(
         "Annual State Pension (£)",
         min_value=0,
-        value=11500,
+        value=12500,
         step=100,
         help="Expected annual state pension amount"
     )
