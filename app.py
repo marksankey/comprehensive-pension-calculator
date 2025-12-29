@@ -57,19 +57,7 @@ class EnhancedSIPPBondCalculator:
         self.basic_rate_threshold = 50270
         self.higher_rate_threshold = 125140
         self.additional_rate_threshold = 150000
-        self.higher_rate_taper_threshold = 100000
-
-        # Tax optimization parameters (OPT-001, OPT-002)
-        self.enable_sipp_priority = True  # Feature flag to enable/disable optimization
-        self.enable_front_load_tax_free = True  # Enable front-loading of tax-free cash
-        self.front_load_tax_free_years = 3  # Years before state pension to front-load
-        self.front_load_tax_free_amount = 18000  # Annual target for early years
-
-        # Warning thresholds (OPT-003)
-        self.warn_higher_rate = True
-        self.warn_taper = True
-        self.warn_suboptimal_isa = True
-
+        
         # Bond database - UK Gilts (prioritizing higher-coupon, liquid issues)
         self.uk_gilts = {
             'UK Treasury 4.25% 2027': {
@@ -283,30 +271,9 @@ class EnhancedSIPPBondCalculator:
         
         tax_breakdown['total_tax'] = tax
         tax_breakdown['effective_rate'] = (tax / taxable_income * 100) if taxable_income > 0 else 0
-
+        
         return tax_breakdown
-
-    def generate_warnings(self, year: int, taxable_income: float, sipp_withdrawal: float,
-                         isa_withdrawal: float, basic_capacity: float) -> List[str]:
-        """Generate warning messages for tax efficiency concerns (OPT-003)"""
-        warnings = []
-
-        # Higher rate warning
-        if self.warn_higher_rate and taxable_income > self.basic_rate_threshold:
-            excess = taxable_income - self.basic_rate_threshold
-            warnings.append(f"Higher rate tax (40%) on £{excess:,.0f} above £{self.basic_rate_threshold:,.0f}")
-
-        # Personal allowance taper warning
-        if self.warn_taper and taxable_income > self.higher_rate_taper_threshold:
-            warnings.append("Personal allowance taper active - 60% effective rate on £100k-£125k income")
-
-        # Suboptimal ISA usage warning
-        if self.warn_suboptimal_isa and isa_withdrawal > 0 and sipp_withdrawal == 0:
-            if basic_capacity > 1000:  # Only warn if significant capacity wasted
-                warnings.append(f"ISA used with £{basic_capacity:,.0f} basic rate capacity available")
-
-        return warnings
-
+    
     def calculate_sipp_tax_free_available(self, sipp_value: float, tax_free_taken: float = 0) -> Dict:
         """Calculate available tax-free amount from SIPP"""
         max_tax_free = sipp_value * 0.25
@@ -582,16 +549,9 @@ class EnhancedSIPPBondCalculator:
         allocation_per_year = total_investment / ladder_years
         return self.get_bond_recommendations(allocation_per_year, ladder_years, account_type, start_year, purchase_date)
     
-    def optimize_withdrawal_order(self, target_net_income: float, available_sources: Dict,
+    def optimize_withdrawal_order(self, target_net_income: float, available_sources: Dict, 
                                 additional_taxable_income: float, personal_allowance: float) -> Dict:
-        """Optimize withdrawal order for tax efficiency (OPT-001)
-
-        New Priority:
-        1. SIPP tax-free (0% tax)
-        2. SIPP taxable (up to basic rate capacity at 20% tax)
-        3. ISA (0% tax - preserved when possible)
-        4. SIPP taxable (at higher rate 40%+ if unavoidable)
-        """
+        """Optimize withdrawal order for tax efficiency"""
         withdrawal_plan = {
             'sipp_tax_free': 0,
             'isa_withdrawal': 0,
@@ -599,121 +559,69 @@ class EnhancedSIPPBondCalculator:
             'total_gross': 0,
             'total_tax': 0,
             'total_net': 0,
-            'basic_rate_capacity': 0,
             'optimization_notes': []
         }
-
+        
         remaining_need = target_net_income
-        current_taxable_income = additional_taxable_income
-
-        # Step 1: Use SIPP tax-free first (0% tax)
+        
+        # Step 1: Use SIPP tax-free first
         if remaining_need > 0 and available_sources.get('sipp_tax_free', 0) > 0:
             sipp_tax_free_use = min(remaining_need, available_sources['sipp_tax_free'])
             withdrawal_plan['sipp_tax_free'] = sipp_tax_free_use
             remaining_need -= sipp_tax_free_use
             withdrawal_plan['optimization_notes'].append(f"Used £{sipp_tax_free_use:,.0f} SIPP tax-free (0% tax)")
-
-        # Calculate available basic rate capacity
-        basic_rate_capacity = max(0, self.basic_rate_threshold - current_taxable_income)
-        withdrawal_plan['basic_rate_capacity'] = basic_rate_capacity
-
-        # Step 2: Use SIPP taxable up to basic rate capacity (OPT-001 optimization)
-        if self.enable_sipp_priority and remaining_need > 0 and basic_rate_capacity > 0:
-            if available_sources.get('sipp_taxable', 0) > 0:
-                # Calculate how much SIPP taxable we can use within basic rate
-                # Need to account for tax when determining withdrawal amount
-                estimated_gross_needed = remaining_need * 1.25  # Rough estimate for 20% tax
-
-                # Iterative calculation for precise tax
-                for iteration in range(10):
-                    sipp_taxable_use = min(estimated_gross_needed, available_sources['sipp_taxable'], basic_rate_capacity)
-                    total_taxable_income = current_taxable_income + sipp_taxable_use
-
-                    # Calculate tax
-                    tax_calc = self.calculate_income_tax_with_thresholds(total_taxable_income, personal_allowance)
-                    tax_without_sipp = self.calculate_income_tax_with_thresholds(current_taxable_income, personal_allowance)
-                    sipp_tax = tax_calc['total_tax'] - tax_without_sipp['total_tax']
-
-                    net_from_sipp = sipp_taxable_use - sipp_tax
-
-                    # Check if we've reached close enough to the target
-                    if abs(net_from_sipp - remaining_need) < 1:
-                        break
-
-                    # Adjust estimate
-                    if net_from_sipp > 0:
-                        adjustment = remaining_need / net_from_sipp
-                        estimated_gross_needed *= adjustment
-                    else:
-                        estimated_gross_needed *= 1.1
-
-                    # Don't exceed basic rate capacity
-                    if estimated_gross_needed > basic_rate_capacity:
-                        estimated_gross_needed = basic_rate_capacity
-
-                if sipp_taxable_use > 0:
-                    withdrawal_plan['sipp_taxable'] = sipp_taxable_use
-                    withdrawal_plan['total_tax'] = sipp_tax
-                    remaining_need -= net_from_sipp
-                    current_taxable_income += sipp_taxable_use
-
-                    effective_rate = (sipp_tax / sipp_taxable_use * 100) if sipp_taxable_use > 0 else 0
-                    withdrawal_plan['optimization_notes'].append(
-                        f"Used £{sipp_taxable_use:,.0f} SIPP taxable at basic rate ({effective_rate:.1f}% tax)"
-                    )
-
-        # Step 3: Use ISA if still needed (preserves tax-free asset)
+        
+        # Step 2: Use ISA if still needed
         if remaining_need > 0 and available_sources.get('isa', 0) > 0:
             isa_use = min(remaining_need, available_sources['isa'])
             withdrawal_plan['isa_withdrawal'] = isa_use
             remaining_need -= isa_use
             withdrawal_plan['optimization_notes'].append(f"Used £{isa_use:,.0f} ISA (0% tax)")
-
-        # Step 4: Use SIPP taxable at higher rate if still needed (unavoidable)
+        
+        # Step 3: Use SIPP taxable if still needed
         if remaining_need > 0 and available_sources.get('sipp_taxable', 0) > 0:
-            # Account for already used SIPP taxable
-            remaining_sipp_taxable = available_sources['sipp_taxable'] - withdrawal_plan['sipp_taxable']
-
-            if remaining_sipp_taxable > 0:
-                # Iterative calculation for precise tax
-                estimated_gross_needed = remaining_need * 1.5  # Rough estimate for 40% tax
-
-                for iteration in range(10):
-                    sipp_taxable_use = min(estimated_gross_needed, remaining_sipp_taxable)
-                    total_taxable_income = current_taxable_income + sipp_taxable_use
-
-                    tax_calc = self.calculate_income_tax_with_thresholds(total_taxable_income, personal_allowance)
-                    tax_without_sipp = self.calculate_income_tax_with_thresholds(current_taxable_income, personal_allowance)
-                    additional_sipp_tax = tax_calc['total_tax'] - tax_without_sipp['total_tax']
-
-                    net_from_sipp = sipp_taxable_use - additional_sipp_tax
-
-                    if abs(net_from_sipp - remaining_need) < 1:
-                        break
-
-                    if net_from_sipp > 0:
-                        adjustment = remaining_need / net_from_sipp
-                        estimated_gross_needed *= adjustment
-                    else:
-                        estimated_gross_needed *= 1.1
-
-                withdrawal_plan['sipp_taxable'] += sipp_taxable_use
-                withdrawal_plan['total_tax'] += additional_sipp_tax
-                remaining_need -= net_from_sipp
-
-                effective_rate = (additional_sipp_tax / sipp_taxable_use * 100) if sipp_taxable_use > 0 else 0
-                withdrawal_plan['optimization_notes'].append(
-                    f"Used £{sipp_taxable_use:,.0f} SIPP taxable at higher rate ({effective_rate:.1f}% tax)"
-                )
-
+            # Iterative calculation for precise tax
+            estimated_gross_needed = remaining_need * 1.3
+            
+            for iteration in range(10):
+                sipp_taxable_use = min(estimated_gross_needed, available_sources['sipp_taxable'])
+                total_taxable_income = additional_taxable_income + sipp_taxable_use
+                
+                tax_calc = self.calculate_income_tax_with_thresholds(total_taxable_income, personal_allowance)
+                
+                if additional_taxable_income > 0:
+                    tax_without_sipp = self.calculate_income_tax_with_thresholds(additional_taxable_income, personal_allowance)
+                    sipp_tax = tax_calc['total_tax'] - tax_without_sipp['total_tax']
+                else:
+                    sipp_tax = tax_calc['total_tax']
+                
+                net_from_sipp = sipp_taxable_use - sipp_tax
+                
+                if abs(net_from_sipp - remaining_need) < 1:
+                    break
+                    
+                if net_from_sipp > 0:
+                    adjustment = remaining_need / net_from_sipp
+                    estimated_gross_needed *= adjustment
+                else:
+                    estimated_gross_needed *= 1.1
+            
+            withdrawal_plan['sipp_taxable'] = sipp_taxable_use
+            withdrawal_plan['total_tax'] = sipp_tax
+            
+            effective_rate = (sipp_tax / sipp_taxable_use * 100) if sipp_taxable_use > 0 else 0
+            withdrawal_plan['optimization_notes'].append(
+                f"Used £{sipp_taxable_use:,.0f} SIPP taxable ({effective_rate:.1f}% tax)"
+            )
+        
         # Calculate totals
         withdrawal_plan['total_gross'] = (
-            withdrawal_plan['sipp_tax_free'] +
-            withdrawal_plan['isa_withdrawal'] +
+            withdrawal_plan['sipp_tax_free'] + 
+            withdrawal_plan['isa_withdrawal'] + 
             withdrawal_plan['sipp_taxable']
         )
         withdrawal_plan['total_net'] = withdrawal_plan['total_gross'] - withdrawal_plan['total_tax']
-
+        
         return withdrawal_plan
     
     def simulate_comprehensive_strategy(self, params: Dict) -> Tuple[List[Dict], pd.DataFrame, pd.DataFrame]:
@@ -935,39 +843,15 @@ class EnhancedSIPPBondCalculator:
                     guaranteed_tax['total_tax']
                 )
                 
+                # Determine additional income needed
+                additional_net_needed = max(0, inflation_adjusted_target - guaranteed_net_income)
+                
                 # Initialize withdrawal variables
                 sipp_tax_free_withdrawal = 0
                 isa_withdrawal = 0
                 sipp_taxable_withdrawal = 0
                 additional_tax = 0
-                basic_rate_capacity = 0
-                optimization_notes = []
-                tax_efficiency_warnings = []
-
-                # OPT-002: Front-load tax-free cash in early years (before state pension)
-                front_loaded_tax_free = 0
-                if self.enable_front_load_tax_free and year <= self.front_load_tax_free_years:
-                    total_sipp_tax_free_available = remaining_sipp_tax_free_bonds + remaining_sipp_tax_free_cash
-                    if total_sipp_tax_free_available > 0:
-                        # Take up to front_load_tax_free_amount from tax-free pot
-                        front_loaded_tax_free = min(
-                            self.front_load_tax_free_amount,
-                            total_sipp_tax_free_available
-                        )
-                        sipp_tax_free_withdrawal = front_loaded_tax_free
-
-                        # Withdraw from cash first, then bonds
-                        if remaining_sipp_tax_free_cash >= front_loaded_tax_free:
-                            remaining_sipp_tax_free_cash -= front_loaded_tax_free
-                        else:
-                            bonds_needed = front_loaded_tax_free - remaining_sipp_tax_free_cash
-                            remaining_sipp_tax_free_cash = 0
-                            remaining_sipp_tax_free_bonds -= bonds_needed
-
-                # Determine additional income needed (after front-loading)
-                current_net_income = guaranteed_net_income + front_loaded_tax_free
-                additional_net_needed = max(0, inflation_adjusted_target - current_net_income)
-
+                
                 if additional_net_needed > 0:
                     # Calculate total available amounts (bonds + cash for each type)
                     total_sipp_tax_free_available = remaining_sipp_tax_free_bonds + remaining_sipp_tax_free_cash
@@ -1006,24 +890,19 @@ class EnhancedSIPPBondCalculator:
                         withdrawal_plan['sipp_taxable'] *= scale_factor
                         withdrawal_plan['total_tax'] *= scale_factor
                     
-                    # Extract final withdrawal amounts (add to front-loaded tax-free)
-                    sipp_tax_free_withdrawal += withdrawal_plan['sipp_tax_free']
+                    # Extract final withdrawal amounts
+                    sipp_tax_free_withdrawal = withdrawal_plan['sipp_tax_free']
                     isa_withdrawal = withdrawal_plan['isa_withdrawal']
                     sipp_taxable_withdrawal = withdrawal_plan['sipp_taxable']
                     additional_tax = withdrawal_plan['total_tax']
-
-                    # Store withdrawal plan for output
-                    basic_rate_capacity = withdrawal_plan['basic_rate_capacity']
-                    optimization_notes = withdrawal_plan['optimization_notes']
-
+                    
                     # Update remaining amounts - withdraw from cash first, then bonds
-                    # SIPP Tax-Free withdrawals (additional to front-loaded amount)
-                    additional_sipp_tax_free = withdrawal_plan['sipp_tax_free']
-                    if additional_sipp_tax_free > 0:
-                        if remaining_sipp_tax_free_cash >= additional_sipp_tax_free:
-                            remaining_sipp_tax_free_cash -= additional_sipp_tax_free
+                    # SIPP Tax-Free withdrawals
+                    if sipp_tax_free_withdrawal > 0:
+                        if remaining_sipp_tax_free_cash >= sipp_tax_free_withdrawal:
+                            remaining_sipp_tax_free_cash -= sipp_tax_free_withdrawal
                         else:
-                            bonds_needed = additional_sipp_tax_free - remaining_sipp_tax_free_cash
+                            bonds_needed = sipp_tax_free_withdrawal - remaining_sipp_tax_free_cash
                             remaining_sipp_tax_free_cash = 0
                             remaining_sipp_tax_free_bonds -= bonds_needed
                     
@@ -1051,16 +930,7 @@ class EnhancedSIPPBondCalculator:
                 total_tax = guaranteed_tax['total_tax'] + additional_tax
                 total_gross_income = total_tax_free_income + total_taxable_income
                 total_net_income = total_gross_income - total_tax
-
-                # OPT-003: Generate tax efficiency warnings
-                tax_efficiency_warnings = self.generate_warnings(
-                    year=year,
-                    taxable_income=total_taxable_income,
-                    sipp_withdrawal=sipp_taxable_withdrawal,
-                    isa_withdrawal=isa_withdrawal,
-                    basic_capacity=basic_rate_capacity
-                )
-
+                
                 # Apply growth correctly: ONLY cash earns growth, bonds stay at face value
                 # This models reality: bonds pay income but principal is fixed until maturity
                 cash_growth_factor = 1 + (investment_growth / 100)
@@ -1142,14 +1012,7 @@ class EnhancedSIPPBondCalculator:
                     
                     # Additional info
                     'bonds_maturing': bonds_maturing_this_year,
-                    'max_withdrawal_applied': total_planned_withdrawal > max_allowed_withdrawal if additional_net_needed > 0 else False,
-
-                    # OPT-001/002/003: Tax optimization data
-                    'basic_rate_capacity': round(basic_rate_capacity),
-                    'sipp_priority_withdrawal_amount': round(sipp_taxable_withdrawal) if sipp_taxable_withdrawal > 0 else 0,
-                    'tax_efficiency_warnings': '; '.join(tax_efficiency_warnings) if tax_efficiency_warnings else '',
-                    'optimization_notes': '; '.join(optimization_notes) if optimization_notes else '',
-                    'front_loaded_tax_free': round(front_loaded_tax_free) if 'front_loaded_tax_free' in locals() else 0
+                    'max_withdrawal_applied': total_planned_withdrawal > max_allowed_withdrawal if additional_net_needed > 0 else False
                 })
             
             # Return initial bond ladders (not the reinvested ones from simulation)
