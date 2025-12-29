@@ -1259,6 +1259,96 @@ def display_cash_flow_projection(annual_data):
     with col4:
         st.metric("Total ISA Withdrawals", f"£{total_isa_withdrawals:,.0f}")
 
+    # Detailed Tax Breakdown Table
+    st.subheader("🧾 Detailed Tax Breakdown by Year")
+
+    st.info("""
+    **Tax Treatment Guide:**
+    - ✅ **Tax-Free**: ISA bond income, ISA withdrawals, SIPP 25% tax-free withdrawals
+    - ❌ **Taxable**: DB pension, State pension, SIPP bond income, SIPP taxable withdrawals
+    """)
+
+    # Build detailed tax breakdown
+    tax_breakdown_data = []
+
+    for year_data in annual_data:
+        year = year_data['year']
+        calendar_year = year_data['calendar_year']
+
+        # Tax-free income components
+        isa_bond_income = year_data.get('isa_bond_income', 0)
+        isa_withdrawal = year_data.get('isa_withdrawal', 0)
+        sipp_tf_withdrawal = year_data.get('sipp_tax_free_withdrawal', 0)
+        total_tax_free = year_data.get('total_tax_free_income', 0)
+
+        # Taxable income components
+        db_income = year_data.get('db_pension_income', 0)
+        state_pension = year_data.get('state_pension_income', 0)
+        sipp_bond_income = year_data.get('sipp_bond_income', 0)
+        sipp_taxable_withdrawal = year_data.get('sipp_taxable_withdrawal', 0)
+        total_taxable = year_data.get('total_taxable_income', 0)
+
+        # Tax details
+        personal_allowance = year_data.get('personal_allowance', 0)
+        total_tax = year_data.get('total_tax', 0)
+        effective_tax_rate = year_data.get('effective_tax_rate', 0)
+
+        # Calculate taxable amount after personal allowance
+        taxable_after_allowance = max(0, total_taxable - personal_allowance)
+
+        tax_breakdown_data.append({
+            'Year': year,
+            'Calendar': calendar_year,
+            'Age': year_data.get('age_at_year_start', '-'),
+
+            # Tax-free income breakdown
+            'ISA Bond Income': f"£{isa_bond_income:,.0f}",
+            'ISA Withdrawal': f"£{isa_withdrawal:,.0f}" if isa_withdrawal > 0 else '-',
+            'SIPP Tax-Free': f"£{sipp_tf_withdrawal:,.0f}" if sipp_tf_withdrawal > 0 else '-',
+            'Total Tax-Free': f"£{total_tax_free:,.0f}",
+
+            # Taxable income breakdown
+            'DB Pension': f"£{db_income:,.0f}",
+            'State Pension': f"£{state_pension:,.0f}" if state_pension > 0 else '-',
+            'SIPP Bond Income': f"£{sipp_bond_income:,.0f}",
+            'SIPP Taxable': f"£{sipp_taxable_withdrawal:,.0f}" if sipp_taxable_withdrawal > 0 else '-',
+            'Total Taxable': f"£{total_taxable:,.0f}",
+
+            # Tax calculation
+            'Personal Allowance': f"£{personal_allowance:,.0f}",
+            'Taxable After PA': f"£{taxable_after_allowance:,.0f}",
+            'Tax Paid': f"£{total_tax:,.0f}",
+            'Effective Rate': f"{effective_tax_rate:.1f}%",
+
+            # Net result
+            'Net Income': f"£{year_data.get('total_net_income', 0):,.0f}"
+        })
+
+    # Convert to DataFrame and display
+    df_tax_breakdown = pd.DataFrame(tax_breakdown_data)
+
+    # Display as interactive table
+    st.dataframe(df_tax_breakdown, use_container_width=True, height=400)
+
+    # Tax summary over entire retirement
+    st.subheader("💷 Lifetime Tax Summary")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    total_tax_paid = sum(year_data.get('total_tax', 0) for year_data in annual_data)
+    total_taxable_income = sum(year_data.get('total_taxable_income', 0) for year_data in annual_data)
+    total_tax_free_income = sum(year_data.get('total_tax_free_income', 0) for year_data in annual_data)
+    avg_effective_rate = (total_tax_paid / total_taxable_income * 100) if total_taxable_income > 0 else 0
+
+    with col1:
+        st.metric("Total Tax Paid", f"£{total_tax_paid:,.0f}")
+    with col2:
+        st.metric("Total Taxable Income", f"£{total_taxable_income:,.0f}")
+    with col3:
+        st.metric("Total Tax-Free Income", f"£{total_tax_free_income:,.0f}")
+    with col4:
+        st.metric("Average Tax Rate", f"{avg_effective_rate:.1f}%")
+
 
 def display_implementation_timeline():
     """Display step-by-step implementation timeline"""
