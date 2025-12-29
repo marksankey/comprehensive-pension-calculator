@@ -1151,6 +1151,105 @@ def display_bond_recommendations(sipp_ladder, isa_ladder):
             st.warning("No ISA bond recommendations generated")
 
 
+def display_cash_flow_projection(annual_data):
+    """Display projected cash flows throughout retirement"""
+    st.subheader("💰 Projected Cash Flow Analysis")
+
+    st.info("""
+    **Cash Flow Breakdown**: Shows all money movements each year including bond maturities,
+    reinvestments, coupon income, and withdrawals from your pension pots.
+    """)
+
+    # Build cash flow table
+    cash_flow_data = []
+
+    for year_data in annual_data:
+        year = year_data['year']
+        calendar_year = year_data['calendar_year']
+
+        # Calculate bond maturities
+        bonds_maturing = year_data.get('bonds_maturing', [])
+        sipp_maturities = sum(b['Principal'] for b in bonds_maturing if b['Type'] == 'SIPP')
+        isa_maturities = sum(b['Principal'] for b in bonds_maturing if b['Type'] == 'ISA')
+        total_maturities = sipp_maturities + isa_maturities
+
+        # Bond income (coupons)
+        sipp_bond_income = year_data.get('sipp_bond_income', 0)
+        isa_bond_income = year_data.get('isa_bond_income', 0)
+        total_bond_income = sipp_bond_income + isa_bond_income
+
+        # Withdrawals
+        sipp_tf_withdrawal = year_data.get('sipp_tax_free_withdrawal', 0)
+        sipp_taxable_withdrawal = year_data.get('sipp_taxable_withdrawal', 0)
+        isa_withdrawal = year_data.get('isa_withdrawal', 0)
+        total_withdrawals = sipp_tf_withdrawal + sipp_taxable_withdrawal + isa_withdrawal
+
+        # Other income
+        db_income = year_data.get('db_pension_income', 0)
+        state_pension = year_data.get('state_pension_income', 0)
+
+        # Net cash in/out (positive = cash in, negative = cash out)
+        # Cash IN: bond maturities (reinvested, so net zero), bond income, pensions
+        # Cash OUT: withdrawals, reinvestments (offset by maturities)
+        cash_inflows = total_bond_income + db_income + state_pension
+        cash_outflows = total_withdrawals
+        net_cash_flow = cash_inflows - cash_outflows
+
+        cash_flow_data.append({
+            'Year': year,
+            'Calendar': calendar_year,
+            'Age': year_data.get('age_at_year_start', '-'),
+            'Bonds Maturing': f"£{total_maturities:,.0f}" if total_maturities > 0 else '-',
+            'Bond Income': f"£{total_bond_income:,.0f}",
+            'Pensions': f"£{(db_income + state_pension):,.0f}",
+            'SIPP TF Withdrawal': f"£{sipp_tf_withdrawal:,.0f}" if sipp_tf_withdrawal > 0 else '-',
+            'SIPP Tax Withdrawal': f"£{sipp_taxable_withdrawal:,.0f}" if sipp_taxable_withdrawal > 0 else '-',
+            'ISA Withdrawal': f"£{isa_withdrawal:,.0f}" if isa_withdrawal > 0 else '-',
+            'Total Withdrawals': f"£{total_withdrawals:,.0f}",
+            'Net Income': f"£{year_data.get('total_net_income', 0):,.0f}"
+        })
+
+    # Convert to DataFrame and display
+    df_cash_flow = pd.DataFrame(cash_flow_data)
+
+    # Display as interactive table
+    st.dataframe(df_cash_flow, use_container_width=True, height=400)
+
+    # Summary statistics
+    st.subheader("📊 Cash Flow Summary")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    total_bond_maturities = sum(
+        sum(b['Principal'] for b in year_data.get('bonds_maturing', []))
+        for year_data in annual_data
+    )
+
+    total_bond_income = sum(
+        year_data.get('sipp_bond_income', 0) + year_data.get('isa_bond_income', 0)
+        for year_data in annual_data
+    )
+
+    total_sipp_withdrawals = sum(
+        year_data.get('sipp_tax_free_withdrawal', 0) + year_data.get('sipp_taxable_withdrawal', 0)
+        for year_data in annual_data
+    )
+
+    total_isa_withdrawals = sum(
+        year_data.get('isa_withdrawal', 0)
+        for year_data in annual_data
+    )
+
+    with col1:
+        st.metric("Total Bond Maturities", f"£{total_bond_maturities:,.0f}")
+    with col2:
+        st.metric("Total Bond Income", f"£{total_bond_income:,.0f}")
+    with col3:
+        st.metric("Total SIPP Withdrawals", f"£{total_sipp_withdrawals:,.0f}")
+    with col4:
+        st.metric("Total ISA Withdrawals", f"£{total_isa_withdrawals:,.0f}")
+
+
 def display_implementation_timeline():
     """Display step-by-step implementation timeline"""
     st.subheader("📅 Implementation Timeline")
@@ -1816,7 +1915,10 @@ def main():
             
             # Display specific bond recommendations
             display_bond_recommendations(sipp_ladder, isa_ladder)
-            
+
+            # Display cash flow projection
+            display_cash_flow_projection(annual_data)
+
             # Implementation timeline
             display_implementation_timeline()
             
