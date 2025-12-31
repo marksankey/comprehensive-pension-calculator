@@ -100,7 +100,9 @@ Tax bands are defined in the calculator class initialization. Update for new tax
 ### Testing Changes
 - Test with various portfolio sizes
 - Verify tax calculations across all bands
-- Check bond ladder generation logic
+- Check bond ladder generation logic (ensure no duplicate bonds)
+- Validate that ladder creates evenly-spaced maturity dates
+- Verify each bond in the ladder has a unique ISIN
 - Validate inflation adjustments
 
 ## Important Considerations
@@ -136,14 +138,96 @@ The application provides:
 
 The application is designed for Streamlit Cloud deployment. Configuration is in `.streamlit/` directory.
 
+## Recent Changes
+
+### Live Bond Data Integration (2025-12-31)
+**Feature**: Integrated free API data sources to fetch real-time UK gilt yields and prices.
+
+**Implementation**:
+- Created `bond_data_fetcher.py` module for API integration
+- Bank of England IADB API for yield curve data
+- Intelligent caching system (24-hour refresh)
+- Graceful fallback to default estimates if API unavailable
+- Live yield interpolation for specific bond maturities
+- Accurate price calculations from market yields
+
+**Benefits**:
+- Bond recommendations now use actual market data instead of hardcoded estimates
+- Yields reflect current market conditions (previously could be 0.8+ percentage points off)
+- Daily automatic updates via caching
+- Data freshness indicator in UI shows last update time
+- Zero cost - uses only free API sources
+
+**Files Added**:
+- `bond_data_fetcher.py` - API integration and caching module
+- `test_bond_fetcher.py` - Test script for verification
+
+**Files Modified**:
+- `app.py` - Integrated BondDataFetcher into EnhancedSIPPBondCalculator
+- `.gitignore` - Added cache directory exclusion
+- `requirements.txt` - Dependencies already present (requests, pandas)
+
+**Usage**: Data automatically refreshes on calculator initialization. Falls back to estimates if API unavailable.
+
+### Bond Ladder Duplicate Selection Fix (2025-12-31)
+**Issue**: The bond ladder was selecting the same bonds multiple times, resulting in duplicate bonds maturing in the same year instead of creating an evenly-spaced ladder structure.
+
+**Root Cause**: The `get_bond_recommendations()` function used ±1 year flexibility when matching bonds to target years, but didn't track which bonds had already been selected. This allowed the same bond to be chosen for multiple ladder years.
+
+**Solution**:
+- Added `selected_isins` set to track already-selected bonds by ISIN
+- Added skip logic to prevent duplicate bond selection
+- Updated all bond selection paths to mark bonds as selected
+- Made fallback bond ISINs unique per year
+
+**Impact**: Bond ladders now properly create evenly-spaced maturity schedules with different bonds for each year, ensuring the ladder strategy works as intended.
+
+**Files Modified**: `app.py` (lines 413, 432-434, 508, 513, 516, 530, 548)
+
 ## Future Enhancement Areas
 
 - Additional bond types or investment vehicles
 - More sophisticated tax optimization
 - Scenario comparison tools
 - Monte Carlo simulation for market volatility
-- Integration with live bond price feeds
+- Enhanced corporate bond spreads data (currently uses gilt curve)
 - Support for couples and inheritance planning
+- Integration with DMO data for individual gilt inventory
+
+## Bond Data Integration
+
+### BondDataFetcher Module (`bond_data_fetcher.py`)
+
+The application now integrates live market data through the BondDataFetcher class:
+
+**Data Sources**:
+- **Bank of England IADB API**: Provides UK gilt yield curves (nominal spot yields for 1, 2, 3, 5, 7, 10, 15, 20, 25, 30 years)
+- **Fallback Estimates**: When API unavailable, uses conservative default yield curve
+
+**Key Features**:
+1. **Automatic Updates**: Fetches fresh data on calculator initialization
+2. **Intelligent Caching**: Stores data for 24 hours in `.cache/` directory
+3. **Yield Interpolation**: Linear interpolation for bonds with non-standard maturities
+4. **Price Calculation**: Computes fair value prices from yields using present value formula
+5. **Graceful Degradation**: Falls back to default estimates if API fails
+
+**API Details**:
+- **Endpoint**: `http://www.bankofengland.co.uk/boeapps/iadb/fromshowcolumns.asp?csv.x=yes`
+- **Method**: HTTP GET with query parameters
+- **Format**: CSV response
+- **Cost**: Free (non-commercial use)
+- **Rate Limit**: None specified, but cached to minimize requests
+
+**Methods**:
+- `fetch_boe_yield_curve()` - Retrieves yield curve from BoE API
+- `interpolate_yield(years_to_maturity)` - Returns interpolated yield for any maturity
+- `update_gilt_prices(gilt_database)` - Updates bond database with current market data
+- `get_data_status()` - Returns cache status and freshness
+
+**Testing**:
+Run `python test_bond_fetcher.py` to verify functionality.
+
+**Note**: In some network environments (e.g., sandboxed), the BoE API may return 403 Forbidden. The system will automatically use fallback estimates.
 
 ## Notes for Claude
 

@@ -8,6 +8,7 @@ import math
 import logging
 import traceback
 import json
+from bond_data_fetcher import BondDataFetcher
 import random
 from typing import Dict, List, Tuple, Optional
 from io import BytesIO
@@ -231,7 +232,44 @@ class EnhancedSIPPBondCalculator:
                 'min_ytm': 4.5
             }
         }
-        
+
+        # Initialize bond data fetcher for live market data
+        self.data_fetcher = BondDataFetcher()
+        self.last_data_update = None
+
+        # Try to update with live market data (optional - falls back to defaults if fails)
+        try:
+            self.update_bond_prices()
+        except Exception as e:
+            logger.warning(f"Failed to fetch live bond data, using defaults: {e}")
+
+    def update_bond_prices(self, force_refresh=False):
+        """Update gilt and corporate bond prices with live market data"""
+        try:
+            # Update UK gilts
+            updated_gilts, last_update = self.data_fetcher.update_gilt_prices(
+                self.uk_gilts
+            )
+            self.uk_gilts = updated_gilts
+
+            # Note: Corporate bonds use same yield curve for now
+            # Could be enhanced with corporate bond spread data
+            updated_corporates, _ = self.data_fetcher.update_gilt_prices(
+                self.corporate_bonds
+            )
+            self.corporate_bonds = updated_corporates
+
+            self.last_data_update = last_update
+            logger.info(f"Bond prices updated successfully at {last_update}")
+
+        except Exception as e:
+            logger.error(f"Failed to update bond prices: {e}")
+            raise
+
+    def get_data_status(self):
+        """Get status of bond price data"""
+        return self.data_fetcher.get_data_status()
+
     def calculate_income_tax_with_thresholds(self, taxable_income: float, personal_allowance: float) -> Dict:
         """Calculate UK income tax with high earner personal allowance reduction"""
         adjusted_personal_allowance = personal_allowance
@@ -441,23 +479,29 @@ class EnhancedSIPPBondCalculator:
                     maturity_date = datetime.strptime(bond_info['maturity_date'], '%Y-%m-%d')
                     years_to_maturity = (maturity_date - purchase_date).days / 365.25
                     years_to_maturity = max(0.1, years_to_maturity)  # Minimum 0.1 years
-                    
-                    # Use minimum YTM from bond info, or calculated target
-                    min_ytm = bond_info.get('min_ytm', target_ytm)
-                    effective_ytm = max(min_ytm, target_ytm)
-                    
-                    # Calculate realistic price based on target YTM
-                    estimated_price = self.calculate_realistic_bond_price(
-                        bond_info['coupon'], years_to_maturity, effective_ytm
-                    )
-                    
-                    # Verify YTM calculation
-                    calculated_ytm = self.calculate_yield_to_maturity(
-                        estimated_price, 100, bond_info['coupon'], years_to_maturity
-                    )
-                    
-                    # Use the higher of calculated or minimum YTM for conservative estimates
-                    final_ytm = max(calculated_ytm, min_ytm)
+
+                    # Prefer live market data if available, otherwise use calculations
+                    if 'current_ytm' in bond_info and 'current_price' in bond_info:
+                        # Use live market data from API
+                        final_ytm = bond_info['current_ytm']
+                        estimated_price = bond_info['current_price']
+                    else:
+                        # Fallback to calculated estimates
+                        min_ytm = bond_info.get('min_ytm', target_ytm)
+                        effective_ytm = max(min_ytm, target_ytm)
+
+                        # Calculate realistic price based on target YTM
+                        estimated_price = self.calculate_realistic_bond_price(
+                            bond_info['coupon'], years_to_maturity, effective_ytm
+                        )
+
+                        # Verify YTM calculation
+                        calculated_ytm = self.calculate_yield_to_maturity(
+                            estimated_price, 100, bond_info['coupon'], years_to_maturity
+                        )
+
+                        # Use the higher of calculated or minimum YTM for conservative estimates
+                        final_ytm = max(calculated_ytm, min_ytm)
                     
                     suitable_bonds.append({
                         'bond_name': bond_name,
@@ -1110,9 +1154,24 @@ def add_birth_date_state_pension():
     return birth_date, state_pension_age, state_pension
 
 
-def display_bond_recommendations(sipp_ladder, isa_ladder):
+def display_bond_recommendations(sipp_ladder, isa_ladder, calc=None):
     """Display specific bond recommendations with purchase instructions"""
     st.subheader("🔗 Specific Bond Recommendations")
+
+    # Show data freshness status
+    if calc:
+        data_status = calc.get_data_status()
+        if data_status['has_cache']:
+            age_hours = data_status['age_hours']
+            last_update = data_status['last_update'].strftime('%Y-%m-%d %H:%M')
+
+            if data_status['is_fresh']:
+                st.success(f"✅ **Live Market Data** (Updated: {last_update}, {age_hours:.1f}h ago)")
+            else:
+                st.warning(f"⚠️ **Data may be stale** (Last update: {last_update}, {age_hours:.1f}h ago)")
+        else:
+            st.info("📊 **Using default yield estimates** (no live data available)")
+
     st.info("""
     **Initial Bond Ladder Setup**: These are the bonds to purchase NOW to create your bond ladder.
     Each bond matures in a different year, providing regular income. When bonds mature during your
@@ -2024,7 +2083,7 @@ def main():
                 )
             
             # Display specific bond recommendations
-            display_bond_recommendations(sipp_ladder, isa_ladder)
+            display_bond_recommendations(sipp_ladder, isa_ladder, calc)
 
             # Display cash flow projection
             display_cash_flow_projection(annual_data)
