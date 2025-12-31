@@ -410,7 +410,8 @@ class EnhancedSIPPBondCalculator:
             purchase_date = datetime.combine(purchase_date, datetime.min.time())
 
         recommendations = []
-        
+        selected_isins = set()  # Track already selected bonds to avoid duplicates
+
         # Select appropriate bond universe and set realistic yield targets
         if account_type.lower() == 'sipp':
             bond_universe = self.uk_gilts
@@ -420,14 +421,18 @@ class EnhancedSIPPBondCalculator:
             bond_universe = self.corporate_bonds  # Only corporate bonds for ISA
             base_ytm = 4.7  # Higher base for corporate bonds
             ytm_increment = 0.08
-        
+
         for year_offset in range(ladder_years):
             target_year = start_year + year_offset
             target_ytm = base_ytm + (year_offset * ytm_increment)
-            
+
             # Find bonds maturing in or near target year, prioritizing higher-coupon bonds
             suitable_bonds = []
             for bond_name, bond_info in bond_universe.items():
+                # Skip if this bond was already selected for a previous year
+                if bond_info['isin'] in selected_isins:
+                    continue
+
                 maturity_year = int(bond_info['maturity_date'].split('-')[0])
 
                 # Allow ±1 year flexibility for matching
@@ -500,12 +505,15 @@ class EnhancedSIPPBondCalculator:
                         # Prefer bonds from sectors we haven't over-selected (max 40% in one sector)
                         if sector_count < max(1, ladder_years * 0.4):
                             recommendations.append(bond)
+                            selected_isins.add(bond['isin'])  # Mark bond as selected
                             break
                     else:
                         # If no good sector diversification available, take the best bond
                         recommendations.append(suitable_bonds[0])
+                        selected_isins.add(suitable_bonds[0]['isin'])  # Mark bond as selected
                 else:
                     recommendations.append(suitable_bonds[0])
+                    selected_isins.add(suitable_bonds[0]['isin'])  # Mark bond as selected
             else:
                 # Fallback recommendation with conservative assumptions
                 if account_type.lower() == 'sipp':
@@ -518,10 +526,11 @@ class EnhancedSIPPBondCalculator:
                     bond_type = 'Corporate'
                     rating = 'BBB+'
                     sector = 'Mixed Corporate'
-                
+
+                fallback_isin = f'TO_BE_IDENTIFIED_{target_year}'  # Unique ISIN per year
                 recommendations.append({
                     'bond_name': f'Target {bond_type} {target_year}',
-                    'isin': 'TO_BE_IDENTIFIED',
+                    'isin': fallback_isin,
                     'maturity_date': f'{target_year}-06-30',
                     'maturity_year': target_year,
                     'coupon': fallback_ytm,
@@ -536,6 +545,7 @@ class EnhancedSIPPBondCalculator:
                     'ladder_year': year_offset + 1,
                     'target_year': target_year
                 })
+                selected_isins.add(fallback_isin)  # Mark fallback bond as selected
         
         return pd.DataFrame(recommendations)
     
