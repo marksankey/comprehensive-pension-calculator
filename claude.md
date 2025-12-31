@@ -100,7 +100,9 @@ Tax bands are defined in the calculator class initialization. Update for new tax
 ### Testing Changes
 - Test with various portfolio sizes
 - Verify tax calculations across all bands
-- Check bond ladder generation logic
+- Check bond ladder generation logic (ensure no duplicate bonds)
+- Validate that ladder creates evenly-spaced maturity dates
+- Verify each bond in the ladder has a unique ISIN
 - Validate inflation adjustments
 
 ## Important Considerations
@@ -135,6 +137,23 @@ The application provides:
 ## Deployment
 
 The application is designed for Streamlit Cloud deployment. Configuration is in `.streamlit/` directory.
+
+## Recent Changes
+
+### Bond Ladder Duplicate Selection Fix (2025-12-31)
+**Issue**: The bond ladder was selecting the same bonds multiple times, resulting in duplicate bonds maturing in the same year instead of creating an evenly-spaced ladder structure.
+
+**Root Cause**: The `get_bond_recommendations()` function used ±1 year flexibility when matching bonds to target years, but didn't track which bonds had already been selected. This allowed the same bond to be chosen for multiple ladder years.
+
+**Solution**:
+- Added `selected_isins` set to track already-selected bonds by ISIN
+- Added skip logic to prevent duplicate bond selection
+- Updated all bond selection paths to mark bonds as selected
+- Made fallback bond ISINs unique per year
+
+**Impact**: Bond ladders now properly create evenly-spaced maturity schedules with different bonds for each year, ensuring the ladder strategy works as intended.
+
+**Files Modified**: `app.py` (lines 413, 432-434, 508, 513, 516, 530, 548)
 
 ## Future Enhancement Areas
 
